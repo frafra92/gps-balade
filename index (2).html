@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Balade IA × FranceBalade — Démo de concept</title>
+<style>
+  :root {
+    --gold: #c9a84c;
+    --bg: #14161a;
+    --panel: #1d2026;
+    --text: #ece7da;
+    --muted: #9a948a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Georgia', 'Cormorant Garamond', serif;
+    padding: 0 0 60px 0;
+  }
+  header {
+    text-align: center;
+    padding: 28px 16px 18px;
+    border-bottom: 1px solid #2a2d33;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 1.7rem;
+    letter-spacing: 1px;
+    color: var(--gold);
+    font-weight: 600;
+  }
+  header p {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  .source-flag {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #e0b35c;
+    border: 1px solid #4a3d22;
+    background: #221c12;
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+  .intro-box {
+    background: #1d2026;
+    border: 1px solid #2a2d33;
+    border-left: 3px solid var(--gold);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 20px;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: #d8d2c4;
+  }
+  .intro-box strong { color: var(--gold); }
+  .container {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 20px 16px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid #2a2d33;
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+  label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+    margin-top: 12px;
+  }
+  select, input {
+    width: 100%;
+    background: #111316;
+    border: 1px solid #34373d;
+    color: var(--text);
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-family: inherit;
+  }
+  input[type="text"]::placeholder { color: #5a5650; }
+
+  .autocomplete-wrap { position: relative; }
+  .autocomplete-list {
+    position: absolute;
+    z-index: 20;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #1a1c21;
+    border: 1px solid #3d4047;
+    border-radius: 8px;
+    margin-top: 4px;
+    max-height: 180px;
+    overflow-y: auto;
+    display: none;
+  }
+  .autocomplete-list.show { display: block; }
+  .autocomplete-item {
+    padding: 9px 12px;
+    font-size: 0.88rem;
+    cursor: pointer;
+    border-bottom: 1px solid #26282e;
+    color: var(--text);
+  }
+  .autocomplete-item:last-child { border-bottom: none; }
+  .autocomplete-item:hover, .autocomplete-item.active {
+    background: #2a2d33;
+    color: var(--gold);
+  }
+  .autocomplete-item .region-tag {
+    color: var(--muted);
+    font-size: 0.72rem;
+    margin-left: 6px;
+  }
+
+  .row-2 { display: flex; gap: 10px; }
+  .row-2 > div { flex: 1; }
+
+  .mode-selector {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .mode-btn {
+    flex: 1;
+    background: #111316;
+    border: 1px solid #34373d;
+    color: var(--muted);
+    padding: 10px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .mode-btn .emoji { font-size: 1.4rem; display: block; margin-bottom: 2px; }
+  .mode-btn .label { font-size: 0.72rem; font-weight: bold; display: block; }
+  .mode-btn .desc { font-size: 0.62rem; display: block; margin-top: 2px; line-height: 1.3; }
+  .mode-btn.active {
+    background: linear-gradient(135deg, var(--gold), #a8863a);
+    border-color: var(--gold);
+    color: #1a1408;
+  }
+  .mode-btn.active .desc { color: #3a2e10; }
+
+  button.primary {
+    margin-top: 18px;
+    width: 100%;
+    background: linear-gradient(135deg, var(--gold), #a8863a);
+    color: #1a1408;
+    border: none;
+    padding: 13px;
+    font-size: 1rem;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+  }
+  button.primary:active { transform: scale(0.98); }
+  button.swap {
+    background: #1a1c21;
+    border: 1px solid #34373d;
+    color: var(--gold);
+    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .field-with-swap {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .field-with-swap .autocomplete-wrap { flex: 1; }
+
+  #result-summary {
+    text-align: center;
+    font-size: 1.05rem;
+    color: var(--gold);
+    margin-bottom: 14px;
+    line-height: 1.5;
+  }
+  #result-summary .sub {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* --- Carte schématique SVG --- */
+  .map-wrap {
+    background: var(--panel);
+    border: 1px solid #2a2d33;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 18px;
+    overflow-x: auto;
+  }
+  .map-wrap svg { display: block; width: 100%; height: auto; }
+  .map-route-line { stroke: #4a3d22; stroke-width: 3; stroke-dasharray: 6 5; fill: none; }
+  .map-pin-circle { stroke: #14161a; stroke-width: 2; }
+  .map-pin-label {
+    font-family: Georgia, serif;
+    fill: var(--text);
+    font-size: 11px;
+  }
+  .map-pin-number {
+    font-family: Georgia, serif;
+    fill: #1a1408;
+    font-size: 11px;
+    font-weight: bold;
+    text-anchor: middle;
+    dominant-baseline: central;
+  }
+
+  .stop {
+    background: var(--panel);
+    border: 1px solid #2a2d33;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
+    position: relative;
+  }
+  .stop .stop-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .stop .pin-badge {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--gold);
+    color: #1a1408;
+    font-weight: bold;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .stop.is-depart .pin-badge, .stop.is-arrivee .pin-badge {
+    background: #5d7a63;
+    color: #fff;
+  }
+  .stop .stars {
+    color: var(--gold);
+    font-size: 0.85rem;
+    letter-spacing: 1px;
+  }
+  .stop h3 {
+    margin: 6px 0 4px;
+    font-size: 1.1rem;
+    color: var(--text);
+  }
+  .stop .meta {
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .stop p {
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: #d8d2c4;
+    margin: 0 0 12px;
+  }
+  .listen-btn {
+    background: #2a2d33;
+    color: var(--gold);
+    border: 1px solid #3d4047;
+    padding: 9px 16px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .listen-btn.speaking { background: var(--gold); color: #1a1408; }
+
+  .stop.candidate {
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .stop.candidate:hover { border-color: #4a3d22; }
+  .stop.candidate.checked {
+    border-color: var(--gold);
+    background: #1f1c14;
+  }
+  .checkbox-wrap {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .checkbox-visual {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 2px solid #4a4d54;
+    flex-shrink: 0;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    color: transparent;
+    transition: all 0.15s;
+  }
+  .stop.candidate.checked .checkbox-visual {
+    background: var(--gold);
+    border-color: var(--gold);
+    color: #1a1408;
+  }
+  .detour-badge {
+    display: inline-block;
+    background: #2a1c14;
+    color: #d99a5c;
+    border: 1px solid #4a3322;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 0.7rem;
+    margin-left: 6px;
+  }
+  .detour-badge.low { background: #1a2420; color: #8fbf99; border-color: #2d4a37; }
+
+  .tarif-badge {
+    display: inline-block;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 0.7rem;
+    margin-left: 6px;
+  }
+  .tarif-badge.gratuit { background: #1a2420; color: #8fbf99; border: 1px solid #2d4a37; }
+  .tarif-badge.payant { background: #2a1c1c; color: #d97c7c; border: 1px solid #4a2d2d; }
+  .tarif-badge.inconnu { background: #2a2820; color: #c9b86a; border: 1px solid #4a4222; }
+
+  .selection-bar {
+    position: sticky;
+    bottom: 0;
+    background: var(--panel);
+    border-top: 1px solid var(--gold);
+    padding: 12px 16px;
+    margin: 0 -16px -60px -16px;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--gold);
+    z-index: 30;
+  }
+
+  .nav-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .nav-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: bold;
+    text-decoration: none;
+    border: 1px solid transparent;
+  }
+  .nav-btn.google { background: #1a3a5c; color: #8ab4f8; border-color: #2c5a8c; }
+  .nav-btn.waze { background: #1a3a5c; color: #5cd6e0; border-color: #1c7a85; }
+
+  .roadbook-section {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px dashed #2a2d33;
+  }
+  .roadbook-title {
+    font-size: 0.95rem;
+    color: var(--gold);
+    text-align: center;
+    margin-bottom: 14px;
+    letter-spacing: 0.5px;
+  }
+  .roadbook-step {
+    background: #1a1c21;
+    border: 1px solid #2a2d33;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .roadbook-step .step-label {
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .roadbook-step h4 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+    color: var(--text);
+  }
+
+  #empty-state {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+    padding: 30px 10px;
+  }
+  .footer-note {
+    text-align: center;
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 30px;
+    padding: 0 20px;
+    line-height: 1.5;
+  }
+  .badge-time {
+    display: inline-block;
+    background: #221c12;
+    color: var(--gold);
+    border: 1px solid #4a3d22;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 0.7rem;
+    margin-left: 6px;
+  }
+  .badge-km {
+    display: inline-block;
+    background: #1a2420;
+    color: #8fbf99;
+    border: 1px solid #2d4a37;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 0.7rem;
+    margin-left: 6px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🧭 Balade IA</h1>
+  <p>Le GPS qui transforme votre temps en découvertes</p>
+  <div class="source-flag">Contenu issu de FranceBalade.com</div>
+</header>
+
+<div class="container">
+
+  <div class="intro-box">
+    <strong>L'idée :</strong> un GPS classique vous indique juste le trajet le plus rapide.
+    Celui-ci vous montre aussi les <strong>détours patrimoniaux</strong> possibles sur votre route,
+    avec pour chacun le temps en plus que ça représente. À vous de cocher ceux qui vous intéressent —
+    l'application calcule l'itinéraire réel et vous raconte chaque étape à voix haute.
+  </div>
+
+  <div class="panel">
+
+    <div class="field-with-swap">
+      <div class="autocomplete-wrap" style="flex:1;">
+        <label for="depart-input">Départ</label>
+        <input type="text" id="depart-input" placeholder="Ville, monument ou adresse complète" autocomplete="off">
+        <div class="autocomplete-list" id="depart-list"></div>
+      </div>
+      <button class="swap" onclick="inverserDepartArrivee()" title="Inverser départ/arrivée">⇄</button>
+      <div class="autocomplete-wrap" style="flex:1;">
+        <label for="arrivee-input">Arrivée</label>
+        <input type="text" id="arrivee-input" placeholder="Ville, monument ou adresse complète" autocomplete="off">
+        <div class="autocomplete-list" id="arrivee-list"></div>
+      </div>
+    </div>
+
+    <label>Style de recherche</label>
+    <div class="mode-selector">
+      <div class="mode-btn" data-mode="tortue" onclick="choisirMode('tortue')">
+        <span class="emoji">🐢</span>
+        <span class="label">Tortue</span>
+        <span class="desc">Liste large de candidats</span>
+      </div>
+      <div class="mode-btn active" data-mode="marche" onclick="choisirMode('marche')">
+        <span class="emoji">🚶</span>
+        <span class="label">Marche</span>
+        <span class="desc">Sélection équilibrée</span>
+      </div>
+      <div class="mode-btn" data-mode="lievre" onclick="choisirMode('lievre')">
+        <span class="emoji">🐇</span>
+        <span class="label">Lièvre</span>
+        <span class="desc">Seulement les incontournables</span>
+      </div>
+    </div>
+
+    <button class="primary" id="btn-generer" onclick="genererParcours()">Voir les étapes possibles</button>
+  </div>
+
+  <div id="result-summary"></div>
+  <div id="map-container"></div>
+  <div id="stops-container">
+    <div id="empty-state">Tapez un départ et une arrivée — une ville, un monument connu, ou une adresse complète avec code postal (ex: 2 allée des Glycines, Orly) — choisissez un style de recherche, puis cliquez pour voir les étapes patrimoniales possibles sur votre route.</div>
+  </div>
+
+</div>
+
+<div class="footer-note">
+  Démonstration de concept · contenus reformulés à partir des fiches patrimoniales de
+  <strong style="color:#c9a84c;">FranceBalade.com</strong>.<br>
+  Carte schématique à but illustratif (pas un calcul d'itinéraire routier réel).
+</div>
+
+<script>
+// ============================================================
+// BASE DE LIEUX FRANCE — inspirée de FranceBalade.com
+// Coordonnées GPS réelles, score d'intérêt 1-5, durée de visite conseillée (min)
+// Résumés reformulés, jamais copiés du site source.
+// ============================================================
+const LIEUX_FRANCE = [
+  { id:"paris-eiffel", nom:"Tour Eiffel", lat:48.8584, lon:2.2945, region:"Paris", score:5, duree:15,
+    resume:"La Tour Eiffel a été construite par Gustave Eiffel pour l'Exposition universelle de 1889. Devenue le symbole de Paris, elle culmine à environ trois cents mètres." },
+  { id:"paris-invalides", nom:"Hôtel des Invalides", lat:48.8566, lon:2.3128, region:"Paris", score:4, duree:20,
+    resume:"Bâti sous Louis XIV pour les soldats blessés, l'Hôtel des Invalides abrite aujourd'hui le tombeau de Napoléon Ier sous son dôme doré." },
+  { id:"paris-alexandre3", nom:"Pont Alexandre III", lat:48.8638, lon:2.3137, region:"Paris", score:4, duree:10,
+    resume:"Construit pour l'Exposition universelle de 1900, ce pont richement orné de statues dorées relie les Invalides au Grand Palais." },
+  { id:"paris-trocadero", nom:"Trocadéro", lat:48.8626, lon:2.2876, region:"Paris", score:3, duree:10,
+    resume:"Le Palais de Chaillot, construit en 1937, offre l'une des plus belles vues sur la Tour Eiffel depuis son vaste parvis." },
+  { id:"paris-louvre", nom:"Musée du Louvre", lat:48.8606, lon:2.3376, region:"Paris", score:5, duree:30,
+    resume:"Ancienne forteresse puis palais royal, le Louvre est devenu l'un des plus grands musées du monde, avec sa célèbre pyramide de verre." },
+  { id:"paris-notredame", nom:"Notre-Dame de Paris", lat:48.8530, lon:2.3499, region:"Paris", score:5, duree:15,
+    resume:"Chef-d'œuvre de l'art gothique entamé au XIIe siècle, Notre-Dame est l'un des monuments les plus visités d'Europe." },
+  { id:"paris-montmartre", nom:"Montmartre & Sacré-Cœur", lat:48.8867, lon:2.3431, region:"Paris", score:4, duree:20,
+    resume:"Perché sur la butte Montmartre, le Sacré-Cœur domine Paris ; le quartier conserve l'atmosphère des artistes du début du XXe siècle." },
+  { id:"versailles-chateau", nom:"Château de Versailles", lat:48.8049, lon:2.1204, region:"Paris", score:5, duree:40,
+    resume:"Voulu par Louis XIV à partir de 1660, le château devient le siège du pouvoir royal en 1682. La Galerie des Glaces et les jardins de Le Nôtre en font un site classé à l'UNESCO." },
+  { id:"saint-cloud", nom:"Domaine de Saint-Cloud", lat:48.8418, lon:2.2186, region:"Paris", score:3, duree:20,
+    resume:"Ancien parc d'un château royal détruit en 1870, le domaine conserve de grandes perspectives et des cascades dessinées par Le Nôtre." },
+  { id:"fontainebleau", nom:"Château de Fontainebleau", lat:48.4021, lon:2.7000, region:"Paris", score:4, duree:30,
+    resume:"Résidence des souverains français pendant huit siècles, le château de Fontainebleau marie influences Renaissance et classiques au cœur d'une immense forêt." },
+
+  { id:"chambord", nom:"Château de Chambord", lat:47.6161, lon:1.5170, region:"Val de Loire", score:5, duree:35,
+    resume:"Le plus vaste des châteaux de la Loire, Chambord fut voulu par François Ier au XVIe siècle. Son escalier à double révolution est emblématique de la Renaissance française." },
+  { id:"chenonceau", nom:"Château de Chenonceau", lat:47.3247, lon:0.9789, region:"Val de Loire", score:5, duree:30,
+    resume:"Surnommé le « château des dames », Chenonceau enjambe le Cher avec sa célèbre galerie. Il doit beaucoup à Diane de Poitiers puis à Catherine de Médicis." },
+  { id:"amboise-chateau", nom:"Château d'Amboise", lat:47.4133, lon:0.9836, region:"Val de Loire", score:4, duree:25,
+    resume:"Résidence royale dominant la Loire, le château d'Amboise est aussi le lieu où repose Léonard de Vinci, accueilli par François Ier dans ses dernières années." },
+  { id:"blois-chateau", nom:"Château de Blois", lat:47.5868, lon:1.3293, region:"Val de Loire", score:4, duree:25,
+    resume:"Résidence de plusieurs rois de France, le château de Blois mêle quatre styles architecturaux, du Moyen Âge à l'époque classique." },
+  { id:"azay-le-rideau", nom:"Château d'Azay-le-Rideau", lat:47.2606, lon:0.4675, region:"Val de Loire", score:4, duree:20,
+    resume:"Posé sur une île de l'Indre, ce château Renaissance du XVIe siècle est réputé pour son élégance et son reflet dans l'eau." },
+  { id:"tours", nom:"Tours", lat:47.3941, lon:0.6848, region:"Val de Loire", score:3, duree:25,
+    resume:"Ville qui symbolise le Val de Loire, Tours fut une cité royale à la fin du XVe siècle ; sa place Plumereau et sa cathédrale Saint-Gatien méritent la visite." },
+  { id:"chinon", nom:"Château de Chinon", lat:47.1664, lon:0.2406, region:"Val de Loire", score:4, duree:25,
+    resume:"Forteresse médiévale dominant la Vienne, Chinon a joué un rôle clé sous les Plantagenêts et c'est là que Jeanne d'Arc rencontra Charles VII en 1429." },
+  { id:"saumur", nom:"Château de Saumur", lat:47.2603, lon:-0.0773, region:"Val de Loire", score:3, duree:20,
+    resume:"Perché au-dessus de la Loire, le château de Saumur évoque les enluminures médiévales des Très Riches Heures du duc de Berry." },
+  { id:"angers", nom:"Château d'Angers", lat:47.4736, lon:-0.5566, region:"Val de Loire", score:4, duree:25,
+    resume:"Forteresse aux dix-sept tours, le château d'Angers abrite la célèbre tapisserie de l'Apocalypse, l'une des plus grandes œuvres tissées du Moyen Âge." },
+  { id:"chartres", nom:"Cathédrale de Chartres", lat:48.4475, lon:1.4892, region:"Val de Loire", score:5, duree:25,
+    resume:"Chef-d'œuvre de l'art gothique, la cathédrale de Chartres est célèbre pour ses vitraux du XIIIe siècle et inscrite au patrimoine mondial de l'UNESCO." },
+  { id:"orleans", nom:"Orléans", lat:47.9029, lon:1.9039, region:"Val de Loire", score:3, duree:20,
+    resume:"Capitale historique des rois capétiens, Orléans reste indissociable de Jeanne d'Arc, qui y leva le siège anglais en 1429." },
+  { id:"bourges", nom:"Cathédrale de Bourges", lat:47.0810, lon:2.3988, region:"Val de Loire", score:4, duree:20,
+    resume:"La cathédrale Saint-Étienne de Bourges, sans transept, impressionne par l'unité de son architecture gothique et ses vitraux médiévaux." },
+  { id:"fontevraud", nom:"Abbaye de Fontevraud", lat:47.1797, lon:0.0531, region:"Val de Loire", score:4, duree:25,
+    resume:"Plus grande cité monastique d'Europe, l'abbaye de Fontevraud abrite les gisants d'Aliénor d'Aquitaine et de plusieurs Plantagenêts." },
+  { id:"poitiers", nom:"Notre-Dame-la-Grande, Poitiers", lat:46.5802, lon:0.3404, region:"Val de Loire", score:4, duree:15,
+    resume:"Joyau de l'art roman, la façade sculptée de Notre-Dame-la-Grande à Poitiers compte parmi les plus belles de France." },
+
+  { id:"nice", nom:"Nice", lat:43.7102, lon:7.2620, region:"Côte d'Azur", score:4, duree:25,
+    resume:"Capitale de la Côte d'Azur, Nice marie la Promenade des Anglais, la vieille ville italienne et la colline de Cimiez." },
+  { id:"cannes", nom:"Cannes", lat:43.5528, lon:7.0174, region:"Côte d'Azur", score:3, duree:15,
+    resume:"Ville mondialement connue pour son festival de cinéma, Cannes conserve un cœur ancien pittoresque autour du Suquet." },
+  { id:"saint-tropez", nom:"Saint-Tropez", lat:43.2677, lon:6.6407, region:"Côte d'Azur", score:3, duree:15,
+    resume:"Ancien village de pêcheurs devenu lieu mythique, Saint-Tropez a conservé son port coloré malgré sa renommée internationale." },
+  { id:"antibes", nom:"Antibes", lat:43.5808, lon:7.1251, region:"Côte d'Azur", score:3, duree:15,
+    resume:"Fondée par les Grecs sous le nom d'Antipolis, Antibes conserve des remparts et un vieux port appréciés des artistes, dont Picasso." },
+  { id:"monaco", nom:"Monaco", lat:43.7384, lon:7.4246, region:"Côte d'Azur", score:4, duree:20,
+    resume:"Principauté perchée sur son rocher, Monaco mêle le palais princier, le casino de Monte-Carlo et un musée océanographique réputé." },
+  { id:"grasse", nom:"Grasse", lat:43.6584, lon:6.9244, region:"Côte d'Azur", score:2, duree:15,
+    resume:"Capitale mondiale du parfum depuis le XVIIe siècle, Grasse cultive jasmin et roses pour les plus grandes maisons de parfumerie." },
+
+  { id:"chamonix", nom:"Chamonix-Mont-Blanc", lat:45.9237, lon:6.8694, region:"Alpes", score:4, duree:25,
+    resume:"Au pied du Mont Blanc, Chamonix est le berceau de l'alpinisme moderne depuis la première ascension du sommet en 1786." },
+  { id:"annecy", nom:"Annecy", lat:45.8992, lon:6.1294, region:"Alpes", score:4, duree:20,
+    resume:"Surnommée la Venise des Alpes, Annecy déploie sa vieille ville aux canaux au bord d'un lac aux eaux limpides." },
+
+  { id:"bordeaux", nom:"Bordeaux", lat:44.8378, lon:-0.5792, region:"Aquitaine", score:4, duree:25,
+    resume:"Capitale mondiale du vin, Bordeaux marie façades classiques du XVIIIe siècle et le miroir d'eau qui reflète la place de la Bourse." },
+  { id:"biarritz", nom:"Biarritz", lat:43.4832, lon:-1.5586, region:"Pays basque", score:3, duree:15,
+    resume:"Ancienne station balnéaire prisée de l'impératrice Eugénie, Biarritz est aujourd'hui une capitale du surf européen." },
+  { id:"saint-jean-de-luz", nom:"Saint-Jean-de-Luz", lat:43.3889, lon:-1.6633, region:"Pays basque", score:3, duree:15,
+    resume:"Port basque traditionnel, Saint-Jean-de-Luz a vu le mariage de Louis XIV et de l'infante d'Espagne en 1660." },
+
+  { id:"mont-saint-michel", nom:"Mont-Saint-Michel", lat:48.6361, lon:-1.5115, region:"Normandie", score:5, duree:30,
+    resume:"Abbaye fortifiée bâtie sur un îlot rocheux, le Mont-Saint-Michel est un haut lieu de pèlerinage médiéval classé au patrimoine mondial." },
+];
+
+// Classification automatique gratuit/payant pour la base manuelle, par mots-clés dans le nom
+// (information non garantie à 100% — affichée comme indication, pas comme certitude)
+function classifierTarif(nom) {
+  const n = nom.toLowerCase();
+  if (/château|musée|abbaye|tapisserie/.test(n)) return 'payant';
+  if (/cathédrale|église|notre-dame|basilique|sacré-cœur/.test(n)) return 'gratuit (visite libre de l\'édifice)';
+  if (/pont|trocadéro|domaine|champ-de-mars|montmartre|ville|tours\b/.test(n)) return 'gratuit';
+  return 'à vérifier sur place';
+}
+LIEUX_FRANCE.forEach(l => { l.tarif = classifierTarif(l.nom); l.source = 'sélection éditoriale'; });
+
+// ============================================================
+// AUTOCOMPLETE
+// ============================================================
+let selectedDepart = null;
+let selectedArrivee = null;
+
+function setupAutocomplete(inputId, listId, onSelect) {
+  const input = document.getElementById(inputId);
+  const list = document.getElementById(listId);
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    if (q.length < 1) { list.classList.remove('show'); return; }
+    const matches = LIEUX_FRANCE.filter(l => l.nom.toLowerCase().includes(q)).slice(0, 8);
+    if (matches.length === 0) { list.classList.remove('show'); list.innerHTML = ''; return; }
+    list.innerHTML = matches.map(l =>
+      `<div class="autocomplete-item" data-id="${l.id}">${l.nom}<span class="region-tag">${l.region}</span></div>`
+    ).join('');
+    list.classList.add('show');
+    list.querySelectorAll('.autocomplete-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const lieu = LIEUX_FRANCE.find(l => l.id === item.getAttribute('data-id'));
+        input.value = lieu.nom;
+        list.classList.remove('show');
+        onSelect(lieu);
+      });
+    });
+  });
+
+  input.addEventListener('blur', () => setTimeout(() => list.classList.remove('show'), 150));
+}
+
+setupAutocomplete('depart-input', 'depart-list', (lieu) => { selectedDepart = lieu; });
+setupAutocomplete('arrivee-input', 'arrivee-list', (lieu) => { selectedArrivee = lieu; });
+
+function inverserDepartArrivee() {
+  const di = document.getElementById('depart-input');
+  const ai = document.getElementById('arrivee-input');
+  const tmpVal = di.value; di.value = ai.value; ai.value = tmpVal;
+  const tmpSel = selectedDepart; selectedDepart = selectedArrivee; selectedArrivee = tmpSel;
+}
+
+// ============================================================
+// GÉOCODAGE D'ADRESSES LIBRES
+// Service principal : API Adresse (gouvernement français, gratuite, sans clé, sans quota strict)
+// Service de secours : Photon (komoot, basé OpenStreetMap, couverture mondiale)
+// ============================================================
+async function geocoderViaAPIAdresse(texte) {
+  const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(texte)}&limit=1`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  const data = await resp.json();
+  if (!data.features || data.features.length === 0) throw new Error('vide');
+  const f = data.features[0];
+  const [lon, lat] = f.geometry.coordinates;
+  return {
+    id: 'addr-' + (f.properties.id || Math.random().toString(36).slice(2)),
+    nom: f.properties.label || texte,
+    lat, lon,
+    region: 'Adresse personnalisée',
+    isAdresseLibre: true,
+  };
+}
+
+async function geocoderViaPhoton(texte) {
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(texte)}&limit=1&lang=fr`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  const data = await resp.json();
+  if (!data.features || data.features.length === 0) throw new Error('vide');
+  const f = data.features[0];
+  const props = f.properties;
+  const [lon, lat] = f.geometry.coordinates;
+  const nomAffiche = [props.name, props.city || props.town || props.village, props.postcode]
+    .filter(Boolean).join(', ');
+  return {
+    id: 'addr-' + (props.osm_id || Math.random().toString(36).slice(2)),
+    nom: nomAffiche || texte,
+    lat, lon,
+    region: 'Adresse personnalisée',
+    isAdresseLibre: true,
+  };
+}
+
+async function geocoderAdresse(texte) {
+  try {
+    return await geocoderViaAPIAdresse(texte);
+  } catch (e) {
+    console.warn('API Adresse (gouv.fr) indisponible, repli sur Photon :', e.message);
+    try {
+      return await geocoderViaPhoton(texte);
+    } catch (e2) {
+      throw new Error('Adresse introuvable : "' + texte + '"');
+    }
+  }
+}
+
+// Résout le départ/arrivée : utilise la sélection de l'autocomplete si disponible et toujours
+// synchronisée avec le texte tapé, sinon géocode le texte libre via Nominatim.
+async function resoudreLieu(inputId, selection) {
+  const texte = document.getElementById(inputId).value.trim();
+  if (!texte) return null;
+  if (selection && selection.nom === texte) return selection;
+  // Le texte ne correspond plus (ou n'a jamais correspondu) à une sélection de la base locale
+  return await geocoderAdresse(texte);
+}
+
+// ============================================================
+// MODE (tortue / marche / lièvre)
+// ============================================================
+let modeActuel = 'marche';
+function choisirMode(mode) {
+  modeActuel = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+  });
+}
+
+// Paramètres par mode : espacement minimum entre arrêts (km) et fréquence cible
+const MODE_PARAMS = {
+  tortue: { espacementMinKm: 8,  cibleKmParArret: 20 },   // beaucoup d'arrêts, même proches
+  marche: { espacementMinKm: 25, cibleKmParArret: 60 },   // quelques arrêts bien choisis
+  lievre:  { espacementMinKm: 60, cibleKmParArret: 130 },  // ~1 arrêt toutes les 2h de route (~130 km), au meilleur endroit
+};
+
+// ============================================================
+// CALCUL GÉOGRAPHIQUE
+// ============================================================
+function distanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Distance d'un point C à la droite AB, et position projetée le long du segment (0 = A, 1 = B)
+function projectionSurSegment(lat, lon, latA, lonA, latB, lonB) {
+  // Conversion simplifiée en plan local (approximation correcte à l'échelle de la France)
+  const kmLat = 111; // km par degré de latitude
+  const kmLon = 111 * Math.cos(latA * Math.PI / 180);
+  const ax = 0, ay = 0;
+  const bx = (lonB - lonA) * kmLon, by = (latB - latA) * kmLat;
+  const px = (lon - lonA) * kmLon, py = (lat - latA) * kmLat;
+
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx*dx + dy*dy;
+  let t = lenSq === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+
+  const projX = ax + t * dx, projY = ay + t * dy;
+  const distPerp = Math.sqrt((px - projX)**2 + (py - projY)**2);
+
+  return { t, distPerp };
+}
+
+// ============================================================
+// APPEL OSRM (vraie route routière, serveur démo public gratuit)
+// ============================================================
+async function obtenirRouteReelle(A, B) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${A.lon},${A.lat};${B.lon},${B.lat}?overview=full&geometries=geojson`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Réponse HTTP ' + response.status);
+  const data = await response.json();
+  if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
+    throw new Error('OSRM: ' + (data.code || 'réponse invalide'));
+  }
+  const route = data.routes[0];
+  return {
+    distanceKm: route.distance / 1000,
+    dureeMin: route.duration / 60,
+    coordonnees: route.geometry.coordinates, // [ [lon, lat], ... ]
+  };
+}
+
+// Distance d'un point à la polyligne réelle de la route (somme des plus proches segments)
+// + position "t" approximative le long de la route (0 = départ, 1 = arrivée)
+function projectionSurPolyligne(lat, lon, coords) {
+  // coords est en [lon, lat]
+  const kmLat = 111;
+  const kmLon = 111 * Math.cos(lat * Math.PI / 180);
+
+  let meilleureDist = Infinity;
+  let meilleurT = 0;
+  let longueurCumulee = 0;
+  const longueursSegments = [];
+  let longueurTotale = 0;
+
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [lon1, lat1] = coords[i];
+    const [lon2, lat2] = coords[i+1];
+    const segLenKm = distanceKm(lat1, lon1, lat2, lon2);
+    longueursSegments.push(segLenKm);
+    longueurTotale += segLenKm;
+  }
+  if (longueurTotale === 0) longueurTotale = 1;
+
+  let cumul = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [lon1, lat1] = coords[i];
+    const [lon2, lat2] = coords[i+1];
+
+    const ax = 0, ay = 0;
+    const bx = (lon2 - lon1) * kmLon, by = (lat2 - lat1) * kmLat;
+    const px = (lon - lon1) * kmLon, py = (lat - lat1) * kmLat;
+    const dx = bx - ax, dy = by - ay;
+    const lenSq = dx*dx + dy*dy;
+    let tSeg = lenSq === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / lenSq;
+    tSeg = Math.max(0, Math.min(1, tSeg));
+    const projX = ax + tSeg * dx, projY = ay + tSeg * dy;
+    const dist = Math.sqrt((px - projX)**2 + (py - projY)**2);
+
+    if (dist < meilleureDist) {
+      meilleureDist = dist;
+      const segLenKm = longueursSegments[i];
+      meilleurT = (cumul + tSeg * segLenKm) / longueurTotale;
+    }
+    cumul += longueursSegments[i];
+  }
+
+  return { t: meilleurT, distPerp: meilleureDist };
+}
+
+// ============================================================
+// WIKIDATA — complète la base manuelle avec des lieux trouvés automatiquement
+// ============================================================
+
+// Classification gratuit/payant par défaut selon le type de lieu (faute de donnée tarifaire fiable)
+const TARIF_PAR_TYPE = {
+  'château': 'payant',
+  'musée': 'payant',
+  'monument': 'à vérifier',
+  'église': 'gratuit',
+  'cathédrale': 'gratuit',
+  'chapelle': 'gratuit',
+  'abbaye': 'payant',
+  'point de vue': 'gratuit',
+  'jardin': 'à vérifier',
+  'parc': 'gratuit',
+  'pont': 'gratuit',
+  'fontaine': 'gratuit',
+  'site archéologique': 'à vérifier',
+};
+
+// Catégories Wikidata interrogées (Q-codes), avec leur étiquette de type pour le tarif
+const CATEGORIES_WIKIDATA = [
+  { qid: 'Q23413', type: 'château' },        // château
+  { qid: 'Q33506', type: 'musée' },          // musée
+  { qid: 'Q16970', type: 'église' },         // église
+  { qid: 'Q2977', type: 'cathédrale' },      // cathédrale
+  { qid: 'Q108325', type: 'abbaye' },        // abbaye/monastère
+  { qid: 'Q158593', type: 'pont' },          // pont historique
+  { qid: 'Q483453', type: 'point de vue' },  // belvédère/point de vue
+];
+
+async function rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax) {
+  const resultats = [];
+  for (const cat of CATEGORIES_WIKIDATA) {
+    const query = `
+      SELECT ?place ?placeLabel ?location ?desc WHERE {
+        SERVICE wikibase:box {
+          ?place wdt:P625 ?location .
+          bd:serviceParam wikibase:cornerSouthWest "Point(${lonMin} ${latMin})"^^geo:wktLiteral .
+          bd:serviceParam wikibase:cornerNorthEast "Point(${lonMax} ${latMax})"^^geo:wktLiteral .
+        }
+        ?place wdt:P31/wdt:P279* wd:${cat.qid} .
+        OPTIONAL { ?place schema:description ?desc . FILTER(LANG(?desc) = "fr") }
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "fr". }
+      } LIMIT 15
+    `;
+    const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(query)}&format=json`;
+    try {
+      const resp = await fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      for (const row of data.results.bindings) {
+        const match = row.location.value.match(/Point\(([-\d.]+) ([-\d.]+)\)/);
+        if (!match) continue;
+        const lon = parseFloat(match[1]), lat = parseFloat(match[2]);
+        resultats.push({
+          id: 'wd-' + row.place.value.split('/').pop(),
+          nom: row.placeLabel ? row.placeLabel.value : 'Lieu inconnu',
+          lat, lon,
+          region: 'Trouvé via Wikidata',
+          score: 3, // score par défaut, faute de notation fiable disponible
+          duree: cat.type === 'château' || cat.type === 'musée' ? 25 : 10,
+          resume: row.desc ? row.desc.value.charAt(0).toUpperCase() + row.desc.value.slice(1) + '.' : `${cat.type.charAt(0).toUpperCase() + cat.type.slice(1)} repéré(e) via Wikidata, à proximité de votre trajet.`,
+          tarif: TARIF_PAR_TYPE[cat.type] || 'à vérifier',
+          source: 'wikidata',
+        });
+      }
+    } catch (e) {
+      console.warn('Wikidata indisponible pour la catégorie', cat.type, ':', e.message);
+    }
+  }
+  return resultats;
+}
+
+// Évite les doublons entre la base manuelle et Wikidata (même lieu à quelques centaines de mètres près)
+function dedupliquerLieux(listeManuelle, listeWikidata) {
+  // 1. Déduplique d'abord les résultats Wikidata entre eux (un même lieu peut matcher plusieurs catégories)
+  const wikidataUniques = [];
+  for (const candidat of listeWikidata) {
+    const dejaVu = wikidataUniques.some(w => distanceKm(w.lat, w.lon, candidat.lat, candidat.lon) < 0.2);
+    if (!dejaVu) wikidataUniques.push(candidat);
+  }
+  // 2. Retire ceux qui font doublon avec la base manuelle
+  return wikidataUniques.filter(wd => {
+    return !listeManuelle.some(m => distanceKm(m.lat, m.lon, wd.lat, wd.lon) < 0.5);
+  });
+}
+
+// ============================================================
+// GÉNÉRATION DE LA LISTE DE CANDIDATS (l'utilisateur choisit ensuite)
+// ============================================================
+let etatActuel = { A: null, B: null, routeDirecte: null, candidats: [], selection: new Set() };
+
+async function genererParcours() {
+  const container = document.getElementById('stops-container');
+  const summary = document.getElementById('result-summary');
+  const mapContainer = document.getElementById('map-container');
+  const btn = document.getElementById('btn-generer');
+  container.innerHTML = '';
+  mapContainer.innerHTML = '';
+
+  const texteDepart = document.getElementById('depart-input').value.trim();
+  const texteArrivee = document.getElementById('arrivee-input').value.trim();
+  if (!texteDepart || !texteArrivee) {
+    summary.innerHTML = '';
+    container.innerHTML = '<div id="empty-state">Indiquez un départ et une arrivée : un lieu de la liste proposée, ou une adresse complète (ex: 2 allée des Glycines, Orly).</div>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Calcul en cours…';
+
+  try {
+    const params = MODE_PARAMS[modeActuel];
+
+    // Résout départ/arrivée : sélection connue de la base, ou géocodage d'adresse libre via Nominatim
+    summary.innerHTML = `<span class="sub">Localisation des adresses…</span>`;
+    let A, B;
+    try {
+      [A, B] = await Promise.all([
+        resoudreLieu('depart-input', selectedDepart),
+        resoudreLieu('arrivee-input', selectedArrivee),
+      ]);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Trouver mon parcours';
+      summary.innerHTML = '';
+      container.innerHTML = `<div id="empty-state">⚠ ${e.message}. Vérifiez l'orthographe ou précisez la ville/code postal.</div>`;
+      return;
+    }
+
+    if (A.id === B.id) {
+      summary.innerHTML = '';
+      container.innerHTML = "<div id=\"empty-state\">Le départ et l'arrivée doivent être différents.</div>";
+      btn.disabled = false;
+      btn.textContent = 'Trouver mon parcours';
+      return;
+    }
+
+    summary.innerHTML = `<span class="sub">Calcul de l'itinéraire réel en cours…</span>`;
+
+    let routeReelle = null;
+    let avertissementRoute = '';
+    try {
+      routeReelle = await obtenirRouteReelle(A, B);
+    } catch (e) {
+      avertissementRoute = "Itinéraire routier indisponible pour le moment (service gratuit OSRM) — calcul approximatif à vol d'oiseau utilisé à la place.";
+      console.warn('OSRM indisponible, repli sur vol d\'oiseau :', e.message);
+    }
+
+    const distanceTotale = routeReelle ? routeReelle.distanceKm : distanceKm(A.lat, A.lon, B.lat, B.lon);
+    const tempsTrajetEstime = routeReelle ? routeReelle.dureeMin : (distanceTotale / 80) * 60;
+
+    // Couloir de recherche : large pour tortue (= plus de candidats), étroit pour lièvre (= seulement les incontournables)
+    const largeurCouloir = Math.max(15, Math.min(60, distanceTotale * 0.15)) *
+      (modeActuel === 'tortue' ? 1.4 : modeActuel === 'lievre' ? 0.7 : 1);
+
+    // --- Recherche Wikidata sur la zone du trajet (vient compléter la base manuelle) ---
+    summary.innerHTML = `<span class="sub">Recherche de lieux supplémentaires via Wikidata…</span>`;
+    let lieuxWikidata = [];
+    let avertissementWikidata = '';
+    try {
+      const margeDeg = Math.max(0.15, largeurCouloir / 90); // marge approximative en degrés
+      const latMin = Math.min(A.lat, B.lat) - margeDeg, latMax = Math.max(A.lat, B.lat) + margeDeg;
+      const lonMin = Math.min(A.lon, B.lon) - margeDeg, lonMax = Math.max(A.lon, B.lon) + margeDeg;
+      lieuxWikidata = await rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax);
+    } catch (e) {
+      avertissementWikidata = "Recherche Wikidata indisponible pour le moment — seule la base de lieux locale a été utilisée.";
+      console.warn('Wikidata indisponible :', e.message);
+    }
+
+    const lieuxWikidataDedupliques = dedupliquerLieux(LIEUX_FRANCE, lieuxWikidata);
+    const basePlaceCombinee = [...LIEUX_FRANCE, ...lieuxWikidataDedupliques];
+
+    // Lieux candidats sur le trajet (hors A et B)
+    let candidatsBruts = basePlaceCombinee
+      .filter(l => l.id !== A.id && l.id !== B.id)
+      .map(l => {
+        const proj = routeReelle
+          ? projectionSurPolyligne(l.lat, l.lon, routeReelle.coordonnees)
+          : projectionSurSegment(l.lat, l.lon, A.lat, A.lon, B.lat, B.lon);
+        return { ...l, t: proj.t, distPerp: proj.distPerp };
+      })
+      .filter(l => l.t > 0.03 && l.t < 0.97 && l.distPerp <= largeurCouloir)
+      .sort((a, b) => a.t - b.t)
+      .slice(0, 10); // on limite le nombre d'appels OSRM de détour (raisonnable pour le service gratuit)
+
+    summary.innerHTML = `<span class="sub">Calcul du détour pour ${candidatsBruts.length} lieu(x) candidat(s)…</span>`;
+
+    // Calcul du détour réel pour chaque candidat : A -> lieu -> B, comparé à A -> B direct
+    const candidatsAvecDetour = [];
+    for (const lieu of candidatsBruts) {
+      let detourKm = null, detourMin = null;
+      if (routeReelle) {
+        try {
+          const [legA, legB] = await Promise.all([
+            obtenirRouteReelle(A, lieu),
+            obtenirRouteReelle(lieu, B),
+          ]);
+          detourKm = (legA.distanceKm + legB.distanceKm) - routeReelle.distanceKm;
+          detourMin = (legA.dureeMin + legB.dureeMin) - routeReelle.dureeMin;
+        } catch (e) {
+          // Si l'appel échoue pour ce lieu précis, on estime grossièrement via la distance perpendiculaire
+          detourKm = lieu.distPerp * 2;
+          detourMin = (detourKm / 60) * 60;
+        }
+      } else {
+        // Sans route réelle, on estime le détour via la géométrie à vol d'oiseau
+        const dA = distanceKm(A.lat, A.lon, lieu.lat, lieu.lon);
+        const dB = distanceKm(lieu.lat, lieu.lon, B.lat, B.lon);
+        detourKm = (dA + dB) - distanceTotale;
+        detourMin = (detourKm / 80) * 60;
+      }
+      candidatsAvecDetour.push({ ...lieu, detourKm: Math.max(0, detourKm), detourMin: Math.max(0, detourMin) });
+    }
+
+    etatActuel = { A, B, routeDirecte: routeReelle, candidats: candidatsAvecDetour, selection: new Set(), tempsTrajetEstime, distanceTotale };
+
+    // --- Affichage résumé ---
+    const modeLabel = { tortue:"🐢 Tortue", marche:"🚶 Marche", lievre:"🐇 Lièvre" }[modeActuel];
+    const routeTag = routeReelle ? '· route réelle' : '· estimation à vol d\'oiseau';
+    summary.innerHTML = `${candidatsAvecDetour.length} étape(s) patrimoniale(s) trouvée(s) en mode ${modeLabel}, à vous de choisir !
+      <span class="sub">${A.nom} → ${B.nom} · trajet direct ${Math.round(distanceTotale)} km · ${formatTemps(Math.round(tempsTrajetEstime))} ${routeTag}</span>`
+      + (avertissementRoute ? `<span class="sub" style="color:#c98c4c;">⚠ ${avertissementRoute}</span>` : '');
+
+    afficherListeCandidats();
+    rafraichirCarte();
+
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Trouver mon parcours';
+  }
+}
+
+function toggleCandidat(id) {
+  if (etatActuel.selection.has(id)) {
+    etatActuel.selection.delete(id);
+  } else {
+    etatActuel.selection.add(id);
+  }
+  afficherListeCandidats();
+  rafraichirCarte();
+}
+
+function rafraichirCarte() {
+  dessinerCarte(
+    etatActuel.A,
+    etatActuel.B,
+    etatActuel.candidats,
+    etatActuel.selection,
+    etatActuel.routeDirecte ? etatActuel.routeDirecte.coordonnees : null,
+    etatActuel.tempsTrajetEstime
+  );
+}
+
+function afficherListeCandidats() {
+  const container = document.getElementById('stops-container');
+  container.innerHTML = '';
+
+  if (etatActuel.candidats.length === 0) {
+    const div = document.createElement('div');
+    div.id = 'empty-state';
+    div.textContent = "Aucune étape patrimoniale connue trouvée sur ce trajet. Essayez le mode 🐢 Tortue (couloir de recherche plus large), ou un trajet passant par une grande région touristique (Val de Loire, Paris, Côte d'Azur...).";
+    container.appendChild(div);
+    return;
+  }
+
+  // Départ
+  const divDepart = document.createElement('div');
+  divDepart.className = 'stop is-depart';
+  divDepart.innerHTML = `
+    <div class="stop-head">
+      <div class="pin-badge">🚩</div>
+      <h3 style="margin:0;">${etatActuel.A.nom}</h3>
+    </div>
+    <div class="meta" style="margin-top:8px;">Départ</div>
+  `;
+  container.appendChild(divDepart);
+
+  // Liste des candidats (dans l'ordre géographique du trajet)
+  [...etatActuel.candidats].sort((a, b) => a.t - b.t).forEach((lieu) => {
+    const isChecked = etatActuel.selection.has(lieu.id);
+    const div = document.createElement('div');
+    div.className = 'stop candidate' + (isChecked ? ' checked' : '');
+    const detourClass = lieu.detourMin <= 15 ? 'low' : '';
+    const tarif = lieu.tarif || 'à vérifier sur place';
+    const tarifClass = tarif.startsWith('gratuit') ? 'gratuit' : tarif === 'payant' ? 'payant' : 'inconnu';
+    const sourceTag = lieu.source === 'wikidata' ? ' · via Wikidata' : '';
+    div.innerHTML = `
+      <div class="checkbox-wrap" onclick="toggleCandidat('${lieu.id}')">
+        <div class="checkbox-visual">${isChecked ? '✓' : ''}</div>
+        <div style="flex:1;">
+          <div class="stars">${'⭐'.repeat(lieu.score)}</div>
+          <h3 style="margin:4px 0 4px;">${lieu.nom}</h3>
+          <div class="meta">${lieu.region}${sourceTag}
+            <span class="badge-time">~${lieu.duree} min sur place</span>
+            <span class="tarif-badge ${tarifClass}">${tarif}</span>
+            <span class="detour-badge ${detourClass}">+${Math.round(lieu.detourKm)} km · +${formatTemps(Math.round(lieu.detourMin))} de détour</span>
+          </div>
+          <p style="margin-top:8px;">${lieu.resume}</p>
+        </div>
+      </div>
+      ${isChecked ? `<button class="listen-btn" data-text="${encodeURIComponent(lieu.nom + '. ' + lieu.resume)}" onclick="event.stopPropagation(); ecouter(this)">🎧 Écouter</button>` : ''}
+    `;
+    container.appendChild(div);
+  });
+
+  // Arrivée
+  const divArrivee = document.createElement('div');
+  divArrivee.className = 'stop is-arrivee';
+  divArrivee.innerHTML = `
+    <div class="stop-head">
+      <div class="pin-badge">🏁</div>
+      <h3 style="margin:0;">${etatActuel.B.nom}</h3>
+    </div>
+    <div class="meta" style="margin-top:8px;">Arrivée</div>
+  `;
+  container.appendChild(divArrivee);
+
+  // --- Feuille de route : étapes retenues dans l'ordre, chacune avec ses boutons de navigation ---
+  const etapesRetenues = etatActuel.candidats
+    .filter(c => etatActuel.selection.has(c.id))
+    .sort((a, b) => a.t - b.t);
+
+  const roadbook = document.createElement('div');
+  roadbook.className = 'roadbook-section';
+
+  if (etapesRetenues.length === 0) {
+    roadbook.innerHTML = `<div class="roadbook-title">Cochez au moins une étape ci-dessus pour générer votre feuille de route.</div>`;
+  } else {
+    let html = `<div class="roadbook-title">📋 Votre feuille de route</div>
+      <div style="text-align:center; font-size:0.78rem; color:var(--muted); margin-bottom:14px;">
+        Cliquez sur "Google Maps" ou "Waze" au moment où vous êtes prêt à rejoindre chaque étape — depuis votre position du moment.
+      </div>`;
+
+    const sequence = [...etapesRetenues, { ...etatActuel.B, isArrivee: true }];
+    sequence.forEach((lieu, i) => {
+      const label = lieu.isArrivee ? 'Destination finale' : `Étape ${i + 1}`;
+      const gmaps = `https://www.google.com/maps/dir/?api=1&destination=${lieu.lat},${lieu.lon}&travelmode=driving`;
+      const waze = `https://waze.com/ul?ll=${lieu.lat},${lieu.lon}&navigate=yes`;
+      html += `
+        <div class="roadbook-step">
+          <div class="step-label">${label}</div>
+          <h4>${lieu.isArrivee ? '🏁 ' : ''}${lieu.nom}</h4>
+          <div class="nav-buttons">
+            <a class="nav-btn google" href="${gmaps}" target="_blank" rel="noopener">📍 Google Maps</a>
+            <a class="nav-btn waze" href="${waze}" target="_blank" rel="noopener">🧭 Waze</a>
+          </div>
+        </div>`;
+    });
+    roadbook.innerHTML = html;
+  }
+  container.appendChild(roadbook);
+
+  // Barre récapitulative de sélection
+  const nbSelection = etatActuel.selection.size;
+  const detourTotal = etatActuel.candidats
+    .filter(c => etatActuel.selection.has(c.id))
+    .reduce((sum, c) => sum + c.detourMin + c.duree, 0);
+  const bar = document.createElement('div');
+  bar.className = 'selection-bar';
+  bar.innerHTML = nbSelection === 0
+    ? "Cochez les étapes qui vous intéressent ci-dessus."
+    : `${nbSelection} étape(s) sélectionnée(s) · environ +${formatTemps(Math.round(detourTotal))} au total (détours + visites)`;
+  container.appendChild(bar);
+}
+
+function formatTemps(min) {
+  if (min < 60) return min + ' min';
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return m === 0 ? h + ' h' : h + ' h ' + m;
+}
+
+// ============================================================
+// CARTE SCHÉMATIQUE (SVG, style "GPS" simplifié)
+// ============================================================
+function couleurDegrade(fractionDansLaTranche) {
+  // 0 = blanc (début de tranche, en forme), 1 = rouge (2h de route, pause conseillée)
+  const t = Math.max(0, Math.min(1, fractionDansLaTranche));
+  // Interpolation blanc (255,255,255) -> rouge (210,60,50)
+  const r = Math.round(255 + (210 - 255) * t);
+  const g = Math.round(255 + (60 - 255) * t);
+  const b = Math.round(255 + (50 - 255) * t);
+  return `rgb(${r},${g},${b})`;
+}
+
+function dessinerCarte(A, B, candidats, selection, coordsRoute, dureeTotaleMin) {
+  selection = selection || new Set();
+  candidats = candidats || [];
+  const W = 600, H = 300, PAD = 50;
+  const TRANCHE_MIN = 120; // 2h, déclenche la suggestion de pause
+
+  const points = [A, ...candidats, B];
+  let lats = points.map(p => p.lat), lons = points.map(p => p.lon);
+  if (coordsRoute) {
+    lats = lats.concat(coordsRoute.map(c => c[1]));
+    lons = lons.concat(coordsRoute.map(c => c[0]));
+  }
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  const spanLat = Math.max(maxLat - minLat, 0.05);
+  const spanLon = Math.max(maxLon - minLon, 0.05);
+
+  function toXY(lat, lon) {
+    const x = PAD + ((lon - minLon) / spanLon) * (W - 2*PAD);
+    const y = (H - PAD) - ((lat - minLat) / spanLat) * (H - 2*PAD);
+    return [x, y];
+  }
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+  svg += `<rect width="${W}" height="${H}" fill="#11141a" rx="8"/>`;
+
+  // --- Légende dégradé (uniquement si on a une durée de trajet à représenter) ---
+  const dureeMinPourLegende = dureeTotaleMin || 0;
+  if (dureeMinPourLegende > 0) {
+    const legendY = H - 14;
+    svg += `<text x="${PAD}" y="${legendY}" class="map-pin-label" font-size="9" fill="#9a948a">Frais</text>`;
+    svg += `<text x="${W-PAD}" y="${legendY}" class="map-pin-label" font-size="9" fill="#9a948a" text-anchor="end">Pause conseillée (2h)</text>`;
+  }
+
+  // --- Tracé du trajet, en dégradé blanc -> rouge par tranche de 2h ---
+  const dureeMin = dureeTotaleMin || 0;
+  let pointsCourbe; // liste de {x, y, tMin} où tMin = minutes de conduite écoulées depuis le départ
+  if (coordsRoute && coordsRoute.length > 1) {
+    const pas = Math.max(1, Math.floor(coordsRoute.length / 250));
+    const echantillon = coordsRoute.filter((_, i) => i % pas === 0);
+    pointsCourbe = echantillon.map((c, i) => ({
+      ...{x: toXY(c[1], c[0])[0], y: toXY(c[1], c[0])[1]},
+      tMin: dureeMin * (i / Math.max(echantillon.length - 1, 1)),
+    }));
+  } else {
+    const N = 40;
+    pointsCourbe = Array.from({length: N+1}, (_, i) => {
+      const frac = i / N;
+      const lat = A.lat + (B.lat - A.lat) * frac;
+      const lon = A.lon + (B.lon - A.lon) * frac;
+      const [x, y] = toXY(lat, lon);
+      return { x, y, tMin: dureeMin * frac };
+    });
+  }
+
+  for (let i = 0; i < pointsCourbe.length - 1; i++) {
+    const p1 = pointsCourbe[i], p2 = pointsCourbe[i+1];
+    const fractionTranche = (p1.tMin % TRANCHE_MIN) / TRANCHE_MIN;
+    const couleur = dureeMin > 0 ? couleurDegrade(fractionTranche) : '#8a7330';
+    svg += `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${couleur}" stroke-width="4" stroke-linecap="round"/>`;
+  }
+  // --- Marqueurs "Pause conseillée" toutes les 2h ---
+  if (dureeMin > TRANCHE_MIN) {
+    const nbPauses = Math.floor(dureeMin / TRANCHE_MIN);
+    for (let p = 1; p <= nbPauses; p++) {
+      const tCiblee = p * TRANCHE_MIN;
+      // point le plus proche de ce temps cumulé
+      let meilleur = pointsCourbe[0];
+      for (const pt of pointsCourbe) {
+        if (Math.abs(pt.tMin - tCiblee) < Math.abs(meilleur.tMin - tCiblee)) meilleur = pt;
+      }
+      svg += `<circle cx="${meilleur.x}" cy="${meilleur.y}" r="9" fill="#1a1c21" stroke="#d23c32" stroke-width="2"/>`;
+      svg += `<text x="${meilleur.x}" y="${meilleur.y+1}" text-anchor="middle" dominant-baseline="central" font-size="10">☕</text>`;
+      svg += `<text x="${meilleur.x}" y="${meilleur.y - 16}" class="map-pin-label" font-size="9" fill="#d99a5c" text-anchor="middle">Pause conseillée</text>`;
+    }
+  }
+
+  // --- Tous les candidats (cochés en doré, non cochés en gris discret) ---
+  candidats.forEach((lieu) => {
+    const [x, y] = toXY(lieu.lat, lieu.lon);
+    const isChecked = selection.has(lieu.id);
+    const color = isChecked ? '#c9a84c' : '#5a5d63';
+    const r = isChecked ? 10 : 7;
+    svg += `<circle cx="${x}" cy="${y}" r="${r}" fill="${color}" class="map-pin-circle" opacity="${isChecked ? 1 : 0.75}"/>`;
+    if (isChecked) {
+      svg += `<text x="${x}" y="${y+1}" class="map-pin-number" text-anchor="middle">✓</text>`;
+    }
+    const labelY = y > H/2 ? y + 18 : y - 14;
+    svg += `<text x="${x}" y="${labelY}" class="map-pin-label" font-size="${isChecked ? 11 : 9}" fill="${isChecked ? '#ece7da' : '#787b80'}" text-anchor="middle">${lieu.nom.length > 18 ? lieu.nom.slice(0,16)+'…' : lieu.nom}</text>`;
+  });
+
+  // --- Départ et arrivée (toujours par-dessus) ---
+  [{...A, isDepart:true}, {...B, isArrivee:true}].forEach((lieu) => {
+    const [x, y] = toXY(lieu.lat, lieu.lon);
+    const label = lieu.isDepart ? '🚩' : '🏁';
+    svg += `<circle cx="${x}" cy="${y}" r="12" fill="#5d7a63" class="map-pin-circle"/>`;
+    svg += `<text x="${x}" y="${y+1}" class="map-pin-number" text-anchor="middle">${label}</text>`;
+    const labelY = y > H/2 ? y + 20 : y - 18;
+    svg += `<text x="${x}" y="${labelY}" class="map-pin-label" font-size="11" font-weight="bold" text-anchor="middle">${lieu.nom.length > 18 ? lieu.nom.slice(0,16)+'…' : lieu.nom}</text>`;
+  });
+
+  svg += `</svg>`;
+  document.getElementById('map-container').innerHTML = `<div class="map-wrap">${svg}</div>`;
+}
+
+// ============================================================
+// SYNTHÈSE VOCALE
+// ============================================================
+let currentUtterance = null;
+
+function ecouter(btn) {
+  const text = decodeURIComponent(btn.getAttribute('data-text'));
+
+  if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+    document.querySelectorAll('.listen-btn.speaking').forEach(b => {
+      b.classList.remove('speaking');
+      b.innerHTML = '🎧 Écouter';
+    });
+    if (currentUtterance && currentUtterance._btn === btn) {
+      currentUtterance = null;
+      return;
+    }
+  }
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'fr-FR';
+  utterance.rate = 0.95;
+  utterance._btn = btn;
+  currentUtterance = utterance;
+
+  btn.classList.add('speaking');
+  btn.innerHTML = '⏸ En cours...';
+
+  utterance.onend = () => { btn.classList.remove('speaking'); btn.innerHTML = '🎧 Écouter'; };
+  utterance.onerror = () => { btn.classList.remove('speaking'); btn.innerHTML = '🎧 Écouter'; };
+
+  window.speechSynthesis.speak(utterance);
+}
+
+// Pré-remplissage de démonstration
+window.addEventListener('DOMContentLoaded', () => {
+  const depart = LIEUX_FRANCE.find(l => l.id === 'paris-eiffel');
+  const arrivee = LIEUX_FRANCE.find(l => l.id === 'chambord');
+  document.getElementById('depart-input').value = depart.nom;
+  document.getElementById('arrivee-input').value = arrivee.nom;
+  selectedDepart = depart;
+  selectedArrivee = arrivee;
+});
+</script>
+
+</body>
+</html>
