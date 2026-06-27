@@ -1082,31 +1082,45 @@ async function genererParcours() {
 
     // --- Sélection équilibrée : on répartit les candidats retenus autour de CHAQUE point d'ancrage ---
     // plutôt que de prendre les N premiers dans l'ordre géographique (ce qui favorisait le départ).
+    // On applique aussi un ratio gratuit/payant pour privilégier les découvertes gratuites.
     const maxParZone = modeActuel === 'tortue' ? 4 : modeActuel === 'lievre' ? 2 : 3;
     const zonesInternes = pointsAncrage.filter(p => p.label !== 'départ' && p.label !== 'arrivée');
     const largeurZoneT = zonesInternes.length > 0 ? (1 / (zonesInternes.length + 1)) * 0.9 : 1;
+
+    const estGratuit = (l) => (l.tarif || '').startsWith('gratuit');
+    const RATIO_GRATUIT = 0.7; // 70% gratuit / 30% payant visé dans la sélection
+
+    function selectionnerAvecRatio(liste, n) {
+      const gratuits = liste.filter(estGratuit).sort((a, b) => b.score - a.score);
+      const payants = liste.filter(l => !estGratuit(l)).sort((a, b) => b.score - a.score);
+      const nGratuits = Math.round(n * RATIO_GRATUIT);
+      let retenus = [...gratuits.slice(0, nGratuits), ...payants.slice(0, n - nGratuits)];
+      // Si l'une des deux catégories n'a pas assez de lieux, on complète avec l'autre pour atteindre n
+      if (retenus.length < n) {
+        const dejaPris = new Set(retenus.map(r => r.id));
+        const reste = [...gratuits, ...payants].filter(l => !dejaPris.has(l.id));
+        retenus = [...retenus, ...reste.slice(0, n - retenus.length)];
+      }
+      return retenus;
+    }
 
     const retenusParZone = new Map();
     let candidatsBruts = [];
     if (zonesInternes.length > 0) {
       for (const zone of zonesInternes) {
-        const dansLaZone = candidatsToutes
-          .filter(c => Math.abs(c.t - zone.t) <= largeurZoneT && !retenusParZone.has(c.id))
-          .sort((a, b) => b.score - a.score)
-          .slice(0, maxParZone);
-        dansLaZone.forEach(c => retenusParZone.set(c.id, c));
+        const dansLaZone = candidatsToutes.filter(c => Math.abs(c.t - zone.t) <= largeurZoneT && !retenusParZone.has(c.id));
+        const choisis = selectionnerAvecRatio(dansLaZone, maxParZone);
+        choisis.forEach(c => retenusParZone.set(c.id, c));
       }
       candidatsBruts = Array.from(retenusParZone.values()).sort((a, b) => a.t - b.t);
       // Si peu de résultats trouvés près des pauses, on complète avec les meilleurs candidats restants du trajet
       if (candidatsBruts.length < 4) {
-        const complements = candidatsToutes
-          .filter(c => !retenusParZone.has(c.id))
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 6 - candidatsBruts.length);
+        const restants = candidatsToutes.filter(c => !retenusParZone.has(c.id));
+        const complements = selectionnerAvecRatio(restants, 6 - candidatsBruts.length);
         candidatsBruts = [...candidatsBruts, ...complements].sort((a, b) => a.t - b.t);
       }
     } else {
-      candidatsBruts = candidatsToutes.sort((a, b) => a.t - b.t);
+      candidatsBruts = selectionnerAvecRatio(candidatsToutes, 8).sort((a, b) => a.t - b.t);
     }
     candidatsBruts = candidatsBruts.slice(0, 12); // limite raisonnable d'appels OSRM de détour
 
