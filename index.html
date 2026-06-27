@@ -930,22 +930,26 @@ const CATEGORIES_WIKIDATA = [
 ];
 
 async function rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax) {
-  // Une seule requête combinant toutes les catégories (via VALUES), au lieu d'une requête par catégorie,
-  // pour rester raisonnable en nombre d'appels au service public gratuit Wikidata.
-  const valuesQids = CATEGORIES_WIKIDATA.map(c => 'wd:' + c.qid).join(' ');
-  const query = `
-    SELECT ?place ?placeLabel ?location ?desc ?cat WHERE {
-      SERVICE wikibase:box {
-        ?place wdt:P625 ?location .
-        bd:serviceParam wikibase:cornerSouthWest "Point(${lonMin} ${latMin})"^^geo:wktLiteral .
-        bd:serviceParam wikibase:cornerNorthEast "Point(${lonMax} ${latMax})"^^geo:wktLiteral .
-      }
-      VALUES ?cat { ${valuesQids} }
-      ?place wdt:P31/wdt:P279* ?cat .
-      OPTIONAL { ?place schema:description ?desc . FILTER(LANG(?desc) = "fr") }
-      SERVICE wikibase:label { bd:serviceParam wikibase:language "fr". }
-    } LIMIT 40
-  `;
+  // Une seule requête combinant toutes les catégories, mais avec un LIMIT propre à CHAQUE catégorie
+  // (via UNION de sous-requêtes), pour empêcher les catégories surreprésentées dans Wikidata
+  // (comme les églises) d'écraser les catégories plus rares (panoramas, écomusées, mégalithes...).
+  const LIMITE_PAR_CATEGORIE = 6;
+  const sousRequetes = CATEGORIES_WIKIDATA.map(cat => `
+    {
+      SELECT ?place ?placeLabel ?location ?desc (wd:${cat.qid} AS ?cat) WHERE {
+        SERVICE wikibase:box {
+          ?place wdt:P625 ?location .
+          bd:serviceParam wikibase:cornerSouthWest "Point(${lonMin} ${latMin})"^^geo:wktLiteral .
+          bd:serviceParam wikibase:cornerNorthEast "Point(${lonMax} ${latMax})"^^geo:wktLiteral .
+        }
+        ?place wdt:P31/wdt:P279* wd:${cat.qid} .
+        OPTIONAL { ?place schema:description ?desc . FILTER(LANG(?desc) = "fr") }
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "fr". }
+      } LIMIT ${LIMITE_PAR_CATEGORIE}
+    }
+  `).join(' UNION ');
+
+  const query = `SELECT ?place ?placeLabel ?location ?desc ?cat WHERE { ${sousRequetes} }`;
   const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(query)}&format=json`;
   const resultats = [];
   try {
@@ -968,6 +972,7 @@ async function rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax) {
         resume: row.desc ? row.desc.value.charAt(0).toUpperCase() + row.desc.value.slice(1) + '.' : `${catInfo.type.charAt(0).toUpperCase() + catInfo.type.slice(1)} repéré(e) via Wikidata, à proximité de votre trajet.`,
         tarif: TARIF_PAR_TYPE[catInfo.type] || 'à vérifier',
         source: 'wikidata',
+        typeWikidata: catInfo.type,
       });
     }
   } catch (e) {
@@ -1165,11 +1170,48 @@ async function genererParcours() {
     const estGratuit = (l) => (l.tarif || '').startsWith('gratuit');
     const RATIO_GRATUIT = 0.7; // 70% gratuit / 30% payant visé dans la sélection
 
+    // Devine le "type" d'un lieu pour la diversification (église, château, point de vue...),
+    // à partir de son champ source si dispo, sinon par mots-clés dans le nom.
+    function typeApprox(l) {
+      if (l.typeWikidata) return l.typeWikidata;
+      const n = l.nom.toLowerCase();
+      if (/église|cathédrale|basilique|chapelle|notre-dame|sacré-cœur/.test(n)) return 'église';
+      if (/château/.test(n)) return 'château';
+      if (/musée|écomusée/.test(n)) return 'musée';
+      if (/abbaye/.test(n)) return 'abbaye';
+      if (/menhir/.test(n)) return 'menhir';
+      if (/dolmen/.test(n)) return 'dolmen';
+      if (/pont/.test(n)) return 'pont';
+      return 'autre';
+    }
+
     function selectionnerAvecRatio(liste, n) {
-      const gratuits = liste.filter(estGratuit).sort((a, b) => b.score - a.score);
-      const payants = liste.filter(l => !estGratuit(l)).sort((a, b) => b.score - a.score);
+      // 1. Mélange aléatoirement la liste avant tri, pour ne jamais favoriser l'ordre d'arrivée des données
+      const melangee = [...liste].sort(() => Math.random() - 0.5);
+      const gratuits = melangee.filter(estGratuit).sort((a, b) => b.score - a.score);
+      const payants = melangee.filter(l => !estGratuit(l)).sort((a, b) => b.score - a.score);
+
+      // 2. Sélection avec diversification de type : à chaque tour, on prend le meilleur candidat
+      // d'un type pas encore représenté avant d'en reprendre un deuxième du même type.
+      function selectionnerDiversifie(source, nbVoulu) {
+        const retenus = [];
+        const typesUtilises = new Set();
+        const restants = [...source];
+        while (retenus.length < nbVoulu && restants.length > 0) {
+          let idx = restants.findIndex(l => !typesUtilises.has(typeApprox(l)));
+          if (idx === -1) idx = 0; // tous les types déjà vus une fois : on reprend depuis le début
+          const choisi = restants.splice(idx, 1)[0];
+          retenus.push(choisi);
+          typesUtilises.add(typeApprox(choisi));
+        }
+        return retenus;
+      }
+
       const nGratuits = Math.round(n * RATIO_GRATUIT);
-      let retenus = [...gratuits.slice(0, nGratuits), ...payants.slice(0, n - nGratuits)];
+      let retenus = [
+        ...selectionnerDiversifie(gratuits, nGratuits),
+        ...selectionnerDiversifie(payants, n - nGratuits),
+      ];
       // Si l'une des deux catégories n'a pas assez de lieux, on complète avec l'autre pour atteindre n
       if (retenus.length < n) {
         const dejaPris = new Set(retenus.map(r => r.id));
