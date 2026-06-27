@@ -950,10 +950,10 @@ async function rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax) {
   `).join(' UNION ');
 
   const query = `SELECT ?place ?placeLabel ?location ?desc ?cat WHERE { ${sousRequetes} }`;
-  const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(query)}&format=json`;
-  const resultats = [];
-  try {
-    const resp = await fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } });
+  const url = `https://query.wikidata.org/sparql`;
+    const resultats = [];
+    try {
+          const resp = await fetch(url, { method: 'POST', headers: { 'Accept': 'application/sparql-results+json', 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'query=' + encodeURIComponent(query) + '&format=json' });
     if (!resp.ok) return resultats;
     const data = await resp.json();
     for (const row of data.results.bindings) {
