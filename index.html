@@ -997,19 +997,70 @@ async function genererParcours() {
     const distanceTotale = routeReelle ? routeReelle.distanceKm : distanceKm(A.lat, A.lon, B.lat, B.lon);
     const tempsTrajetEstime = routeReelle ? routeReelle.dureeMin : (distanceTotale / 80) * 60;
 
+    // --- Points d'ancrage le long du trajet : départ, chaque pause de 2h, arrivée ---
+    // On cible la recherche autour de CES points plutôt que sur toute la zone globale,
+    // pour éviter que les résultats se concentrent uniquement près du départ.
+    const TRANCHE_PAUSE_MIN = 120;
+    function positionSurTrajetAt(fractionTemps) {
+      // fractionTemps : 0 = départ, 1 = arrivée
+      if (routeReelle && routeReelle.coordonnees.length > 1) {
+        const coords = routeReelle.coordonnees;
+        const idx = Math.min(coords.length - 1, Math.round(fractionTemps * (coords.length - 1)));
+        const [lon, lat] = coords[idx];
+        return { lat, lon };
+      }
+      return { lat: A.lat + (B.lat - A.lat) * fractionTemps, lon: A.lon + (B.lon - A.lon) * fractionTemps };
+    }
+
+    const pointsAncrage = [{ t: 0, label: 'départ' }];
+    if (tempsTrajetEstime > TRANCHE_PAUSE_MIN) {
+      const nbPauses = Math.floor(tempsTrajetEstime / TRANCHE_PAUSE_MIN);
+      for (let p = 1; p <= nbPauses; p++) {
+        pointsAncrage.push({ t: (p * TRANCHE_PAUSE_MIN) / tempsTrajetEstime, label: 'pause ' + p });
+      }
+    }
+    pointsAncrage.push({ t: 1, label: 'arrivée' });
+    // Point milieu supplémentaire si le trajet est court (pas de vraie pause) pour ne pas chercher qu'aux extrémités
+    if (pointsAncrage.length === 2) pointsAncrage.splice(1, 0, { t: 0.5, label: 'milieu' });
+
+    // Comble les grands intervalles entre deux points d'ancrage consécutifs (ex: départ -> 1ère pause tardive)
+    // pour garantir une couverture régulière sur tout le trajet, pas seulement près des pauses.
+    const triParT = [...pointsAncrage].sort((a, b) => a.t - b.t);
+    const pointsCombles = [triParT[0]];
+    const ECART_MAX_T = 0.35; // au-delà de ~35% du trajet sans ancrage, on insère un point intermédiaire
+    for (let i = 1; i < triParT.length; i++) {
+      const prec = triParT[i - 1], cour = triParT[i];
+      const ecart = cour.t - prec.t;
+      if (ecart > ECART_MAX_T) {
+        const nbInsertions = Math.ceil(ecart / ECART_MAX_T) - 1;
+        for (let k = 1; k <= nbInsertions; k++) {
+          pointsCombles.push({ t: prec.t + (ecart * k) / (nbInsertions + 1), label: 'intermédiaire' });
+        }
+      }
+      pointsCombles.push(cour);
+    }
+    pointsAncrage.length = 0;
+    pointsAncrage.push(...pointsCombles);
+
     // Couloir de recherche : large pour tortue (= plus de candidats), étroit pour lièvre (= seulement les incontournables)
     const largeurCouloir = Math.max(15, Math.min(60, distanceTotale * 0.15)) *
       (modeActuel === 'tortue' ? 1.4 : modeActuel === 'lievre' ? 0.7 : 1);
 
-    // --- Recherche Wikidata sur la zone du trajet (vient compléter la base manuelle) ---
-    summary.innerHTML = `<span class="sub">Recherche de lieux supplémentaires via Wikidata…</span>`;
+    // --- Recherche Wikidata autour de CHAQUE point d'ancrage (zone resserrée, pas la zone globale) ---
+    summary.innerHTML = `<span class="sub">Recherche de lieux supplémentaires via Wikidata (${pointsAncrage.length} zones)…</span>`;
     let lieuxWikidata = [];
     let avertissementWikidata = '';
     try {
-      const margeDeg = Math.max(0.15, largeurCouloir / 90); // marge approximative en degrés
-      const latMin = Math.min(A.lat, B.lat) - margeDeg, latMax = Math.max(A.lat, B.lat) + margeDeg;
-      const lonMin = Math.min(A.lon, B.lon) - margeDeg, lonMax = Math.max(A.lon, B.lon) + margeDeg;
-      lieuxWikidata = await rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax);
+      const rayonZoneDeg = Math.max(0.12, largeurCouloir / 90);
+      const recherches = pointsAncrage.map(pt => {
+        const centre = positionSurTrajetAt(pt.t);
+        return rechercherLieuxWikidata(
+          centre.lat - rayonZoneDeg, centre.lon - rayonZoneDeg,
+          centre.lat + rayonZoneDeg, centre.lon + rayonZoneDeg
+        );
+      });
+      const resultatsParZone = await Promise.all(recherches);
+      lieuxWikidata = resultatsParZone.flat();
     } catch (e) {
       avertissementWikidata = "Recherche Wikidata indisponible pour le moment — seule la base de lieux locale a été utilisée.";
       console.warn('Wikidata indisponible :', e.message);
@@ -1018,8 +1069,8 @@ async function genererParcours() {
     const lieuxWikidataDedupliques = dedupliquerLieux(LIEUX_FRANCE, lieuxWikidata);
     const basePlaceCombinee = [...LIEUX_FRANCE, ...lieuxWikidataDedupliques];
 
-    // Lieux candidats sur le trajet (hors A et B)
-    let candidatsBruts = basePlaceCombinee
+    // Tous les candidats valables sur le couloir du trajet (hors A et B)
+    let candidatsToutes = basePlaceCombinee
       .filter(l => l.id !== A.id && l.id !== B.id)
       .map(l => {
         const proj = routeReelle
@@ -1027,9 +1078,37 @@ async function genererParcours() {
           : projectionSurSegment(l.lat, l.lon, A.lat, A.lon, B.lat, B.lon);
         return { ...l, t: proj.t, distPerp: proj.distPerp };
       })
-      .filter(l => l.t > 0.03 && l.t < 0.97 && l.distPerp <= largeurCouloir)
-      .sort((a, b) => a.t - b.t)
-      .slice(0, 10); // on limite le nombre d'appels OSRM de détour (raisonnable pour le service gratuit)
+      .filter(l => l.t > 0.03 && l.t < 0.97 && l.distPerp <= largeurCouloir);
+
+    // --- Sélection équilibrée : on répartit les candidats retenus autour de CHAQUE point d'ancrage ---
+    // plutôt que de prendre les N premiers dans l'ordre géographique (ce qui favorisait le départ).
+    const maxParZone = modeActuel === 'tortue' ? 4 : modeActuel === 'lievre' ? 2 : 3;
+    const zonesInternes = pointsAncrage.filter(p => p.label !== 'départ' && p.label !== 'arrivée');
+    const largeurZoneT = zonesInternes.length > 0 ? (1 / (zonesInternes.length + 1)) * 0.9 : 1;
+
+    const retenusParZone = new Map();
+    let candidatsBruts = [];
+    if (zonesInternes.length > 0) {
+      for (const zone of zonesInternes) {
+        const dansLaZone = candidatsToutes
+          .filter(c => Math.abs(c.t - zone.t) <= largeurZoneT && !retenusParZone.has(c.id))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, maxParZone);
+        dansLaZone.forEach(c => retenusParZone.set(c.id, c));
+      }
+      candidatsBruts = Array.from(retenusParZone.values()).sort((a, b) => a.t - b.t);
+      // Si peu de résultats trouvés près des pauses, on complète avec les meilleurs candidats restants du trajet
+      if (candidatsBruts.length < 4) {
+        const complements = candidatsToutes
+          .filter(c => !retenusParZone.has(c.id))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 6 - candidatsBruts.length);
+        candidatsBruts = [...candidatsBruts, ...complements].sort((a, b) => a.t - b.t);
+      }
+    } else {
+      candidatsBruts = candidatsToutes.sort((a, b) => a.t - b.t);
+    }
+    candidatsBruts = candidatsBruts.slice(0, 12); // limite raisonnable d'appels OSRM de détour
 
     summary.innerHTML = `<span class="sub">Calcul du détour pour ${candidatsBruts.length} lieu(x) candidat(s)…</span>`;
 
