@@ -966,7 +966,7 @@ async function rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax) {
         id: 'wd-' + row.place.value.split('/').pop(),
         nom: row.placeLabel ? row.placeLabel.value : 'Lieu inconnu',
         lat, lon,
-        region: 'Trouvé via Wikidata',
+        region: 'Patrimoine local',
         score: 3, // score par défaut, faute de notation fiable disponible
         duree: (catInfo.type === 'château' || catInfo.type === 'musée' || catInfo.type === 'écomusée') ? 25 : 10,
         resume: row.desc ? row.desc.value.charAt(0).toUpperCase() + row.desc.value.slice(1) + '.' : `${catInfo.type.charAt(0).toUpperCase() + catInfo.type.slice(1)} repéré(e) via Wikidata, à proximité de votre trajet.`,
