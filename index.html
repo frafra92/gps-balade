@@ -861,59 +861,70 @@ const TARIF_PAR_TYPE = {
   'parc': 'gratuit',
   'pont': 'gratuit',
   'fontaine': 'gratuit',
-  'site archéologique': 'à vérifier',
+  'site archéologique': 'gratuit (extérieur, accès libre la plupart du temps)',
+  'menhir': 'gratuit (accès libre la plupart du temps)',
+  'dolmen': 'gratuit (accès libre la plupart du temps)',
+  'écomusée': 'payant',
 };
 
 // Catégories Wikidata interrogées (Q-codes), avec leur étiquette de type pour le tarif
 const CATEGORIES_WIKIDATA = [
-  { qid: 'Q23413', type: 'château' },        // château
-  { qid: 'Q33506', type: 'musée' },          // musée
-  { qid: 'Q16970', type: 'église' },         // église
-  { qid: 'Q2977', type: 'cathédrale' },      // cathédrale
-  { qid: 'Q108325', type: 'abbaye' },        // abbaye/monastère
-  { qid: 'Q158593', type: 'pont' },          // pont historique
-  { qid: 'Q483453', type: 'point de vue' },  // belvédère/point de vue
+  { qid: 'Q23413', type: 'château' },          // château
+  { qid: 'Q33506', type: 'musée' },            // musée
+  { qid: 'Q16970', type: 'église' },           // église
+  { qid: 'Q2977', type: 'cathédrale' },        // cathédrale
+  { qid: 'Q108325', type: 'abbaye' },          // abbaye/monastère
+  { qid: 'Q158593', type: 'pont' },            // pont historique
+  { qid: 'Q6017969', type: 'point de vue' },   // belvédère/panorama (corrigé)
+  { qid: 'Q193475', type: 'menhir' },          // menhir / pierre dressée préhistorique
+  { qid: 'Q101659', type: 'dolmen' },          // dolmen préhistorique
+  { qid: 'Q839954', type: 'site archéologique' }, // site archéologique / vestiges
+  { qid: 'Q756102', type: 'écomusée' },        // musée en plein air / écomusée (artisanat, savoir-faire local)
 ];
 
 async function rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax) {
-  const resultats = [];
-  for (const cat of CATEGORIES_WIKIDATA) {
-    const query = `
-      SELECT ?place ?placeLabel ?location ?desc WHERE {
-        SERVICE wikibase:box {
-          ?place wdt:P625 ?location .
-          bd:serviceParam wikibase:cornerSouthWest "Point(${lonMin} ${latMin})"^^geo:wktLiteral .
-          bd:serviceParam wikibase:cornerNorthEast "Point(${lonMax} ${latMax})"^^geo:wktLiteral .
-        }
-        ?place wdt:P31/wdt:P279* wd:${cat.qid} .
-        OPTIONAL { ?place schema:description ?desc . FILTER(LANG(?desc) = "fr") }
-        SERVICE wikibase:label { bd:serviceParam wikibase:language "fr". }
-      } LIMIT 15
-    `;
-    const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(query)}&format=json`;
-    try {
-      const resp = await fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } });
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      for (const row of data.results.bindings) {
-        const match = row.location.value.match(/Point\(([-\d.]+) ([-\d.]+)\)/);
-        if (!match) continue;
-        const lon = parseFloat(match[1]), lat = parseFloat(match[2]);
-        resultats.push({
-          id: 'wd-' + row.place.value.split('/').pop(),
-          nom: row.placeLabel ? row.placeLabel.value : 'Lieu inconnu',
-          lat, lon,
-          region: 'Trouvé via Wikidata',
-          score: 3, // score par défaut, faute de notation fiable disponible
-          duree: cat.type === 'château' || cat.type === 'musée' ? 25 : 10,
-          resume: row.desc ? row.desc.value.charAt(0).toUpperCase() + row.desc.value.slice(1) + '.' : `${cat.type.charAt(0).toUpperCase() + cat.type.slice(1)} repéré(e) via Wikidata, à proximité de votre trajet.`,
-          tarif: TARIF_PAR_TYPE[cat.type] || 'à vérifier',
-          source: 'wikidata',
-        });
+  // Une seule requête combinant toutes les catégories (via VALUES), au lieu d'une requête par catégorie,
+  // pour rester raisonnable en nombre d'appels au service public gratuit Wikidata.
+  const valuesQids = CATEGORIES_WIKIDATA.map(c => 'wd:' + c.qid).join(' ');
+  const query = `
+    SELECT ?place ?placeLabel ?location ?desc ?cat WHERE {
+      SERVICE wikibase:box {
+        ?place wdt:P625 ?location .
+        bd:serviceParam wikibase:cornerSouthWest "Point(${lonMin} ${latMin})"^^geo:wktLiteral .
+        bd:serviceParam wikibase:cornerNorthEast "Point(${lonMax} ${latMax})"^^geo:wktLiteral .
       }
-    } catch (e) {
-      console.warn('Wikidata indisponible pour la catégorie', cat.type, ':', e.message);
+      VALUES ?cat { ${valuesQids} }
+      ?place wdt:P31/wdt:P279* ?cat .
+      OPTIONAL { ?place schema:description ?desc . FILTER(LANG(?desc) = "fr") }
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "fr". }
+    } LIMIT 40
+  `;
+  const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(query)}&format=json`;
+  const resultats = [];
+  try {
+    const resp = await fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } });
+    if (!resp.ok) return resultats;
+    const data = await resp.json();
+    for (const row of data.results.bindings) {
+      const match = row.location.value.match(/Point\(([-\d.]+) ([-\d.]+)\)/);
+      if (!match) continue;
+      const lon = parseFloat(match[1]), lat = parseFloat(match[2]);
+      const catQid = row.cat ? row.cat.value.split('/').pop() : null;
+      const catInfo = CATEGORIES_WIKIDATA.find(c => c.qid === catQid) || { type: 'monument' };
+      resultats.push({
+        id: 'wd-' + row.place.value.split('/').pop(),
+        nom: row.placeLabel ? row.placeLabel.value : 'Lieu inconnu',
+        lat, lon,
+        region: 'Trouvé via Wikidata',
+        score: 3, // score par défaut, faute de notation fiable disponible
+        duree: (catInfo.type === 'château' || catInfo.type === 'musée' || catInfo.type === 'écomusée') ? 25 : 10,
+        resume: row.desc ? row.desc.value.charAt(0).toUpperCase() + row.desc.value.slice(1) + '.' : `${catInfo.type.charAt(0).toUpperCase() + catInfo.type.slice(1)} repéré(e) via Wikidata, à proximité de votre trajet.`,
+        tarif: TARIF_PAR_TYPE[catInfo.type] || 'à vérifier',
+        source: 'wikidata',
+      });
     }
+  } catch (e) {
+    console.warn('Wikidata indisponible pour cette zone :', e.message);
   }
   return resultats;
 }
