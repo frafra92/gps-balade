@@ -667,6 +667,10 @@ function classifierTarif(nom) {
 }
 LIEUX_FRANCE.forEach(l => { l.tarif = classifierTarif(l.nom); l.source = 'sélection éditoriale'; });
 
+  const ARTISANS_FRANCE = [
+    ];
+  
+
 // ============================================================
 // AUTOCOMPLETE
 // ============================================================
@@ -680,7 +684,7 @@ function setupAutocomplete(inputId, listId, onSelect) {
   input.addEventListener('input', () => {
     const q = input.value.trim().toLowerCase();
     if (q.length < 1) { list.classList.remove('show'); return; }
-    const matches = LIEUX_FRANCE.filter(l => l.nom.toLowerCase().includes(q)).slice(0, 8);
+    const matches = [...LIEUX_FRANCE, ...ARTISANS_FRANCE].filter(l => l.nom.toLowerCase().includes(q)).slice(0, 8);
     if (matches.length === 0) { list.classList.remove('show'); list.innerHTML = ''; return; }
     list.innerHTML = matches.map(l =>
       `<div class="autocomplete-item" data-id="${l.id}">${l.nom}<span class="region-tag">${l.region}</span></div>`
@@ -912,6 +916,8 @@ const TARIF_PAR_TYPE = {
   'menhir': 'gratuit (accès libre la plupart du temps)',
   'dolmen': 'gratuit (accès libre la plupart du temps)',
   'écomusée': 'payant',
+    'manufacture': 'à vérifier (souvent visite guidée payante, boutique libre)',
+    'artisanat': 'gratuit (boutique en accès libre, achat optionnel)',
 };
 
 // Catégories Wikidata interrogées (Q-codes), avec leur étiquette de type pour le tarif
@@ -927,6 +933,7 @@ const CATEGORIES_WIKIDATA = [
   { qid: 'Q101659', type: 'dolmen' },          // dolmen préhistorique
   { qid: 'Q839954', type: 'site archéologique' }, // site archéologique / vestiges
   { qid: 'Q756102', type: 'écomusée' },        // musée en plein air / écomusée (artisanat, savoir-faire local)
+  { qid: 'Q380342', type: 'manufacture' },     // manufacture / atelier artisanal historique
 ];
 
 async function rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax) {
@@ -1146,9 +1153,9 @@ async function genererParcours() {
       console.warn('Wikidata indisponible :', e.message);
     }
 
-    const lieuxWikidataDedupliques = dedupliquerLieux(LIEUX_FRANCE, lieuxWikidata);
-    const basePlaceCombinee = [...LIEUX_FRANCE, ...lieuxWikidataDedupliques];
-
+    const baseManuelleComplete = [...LIEUX_FRANCE, ...ARTISANS_FRANCE];
+        const lieuxWikidataDedupliques = dedupliquerLieux(baseManuelleComplete, lieuxWikidata);
+        const basePlaceCombinee = [...baseManuelleComplete, ...lieuxWikidataDedupliques];
     // Tous les candidats valables sur le couloir du trajet (hors A et B)
     let candidatsToutes = basePlaceCombinee
       .filter(l => l.id !== A.id && l.id !== B.id)
