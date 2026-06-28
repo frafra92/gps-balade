@@ -202,6 +202,19 @@
     color: var(--muted);
     margin-top: 4px;
   }
+  .terroir-tip {
+    display: block;
+    font-size: 0.8rem;
+    color: #d9b878;
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: #221c12;
+    border: 1px solid #4a3d22;
+    border-radius: 8px;
+    line-height: 1.5;
+    text-align: left;
+  }
+  .terroir-tip strong { color: var(--gold); }
 
   /* --- Indicateur de chargement (boussole qui tourne + escargot qui se balade) --- */
   .loading-zone {
@@ -356,6 +369,22 @@
     display: flex;
     align-items: flex-start;
     gap: 12px;
+  }
+  .lieu-image {
+    width: 64px;
+    height: 64px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #11141a;
+    border: 1px solid #2a2d33;
+  }
+  .lieu-image-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    opacity: 0.4;
   }
   .checkbox-visual {
     width: 24px;
@@ -656,6 +685,19 @@ const LIEUX_FRANCE = [
     resume:"Abbaye fortifiée bâtie sur un îlot rocheux, le Mont-Saint-Michel est un haut lieu de pèlerinage médiéval classé au patrimoine mondial." },
 ];
 
+// ============================================================
+// ARTISANS & MEILLEURS OUVRIERS DE FRANCE — base manuelle complémentaire
+// Wikidata ne référence presque jamais l'adresse actuelle d'un artisan ou MOF individuel,
+// donc cette liste est à enrichir à la main au fil de vos découvertes (ami, oncle, clients...).
+// Même structure que LIEUX_FRANCE pour s'intégrer naturellement aux résultats.
+// ============================================================
+const ARTISANS_FRANCE = [
+  // Exemple de structure à dupliquer pour chaque artisan/MOF que vous connaissez :
+  // { id:"artisan-nom-ville", nom:"Atelier [Nom] — [Métier]", lat:0.0, lon:0.0, region:"Artisanat local",
+  //   score:4, duree:20, tarif:"gratuit (boutique en accès libre, achat optionnel)",
+  //   resume:"Présentation courte du savoir-faire, idéalement avec le titre MOF s'il y en a un." },
+];
+
 // Classification automatique gratuit/payant pour la base manuelle, par mots-clés dans le nom
 // (information non garantie à 100% — affichée comme indication, pas comme certitude)
 function classifierTarif(nom) {
@@ -666,10 +708,6 @@ function classifierTarif(nom) {
   return 'à vérifier sur place';
 }
 LIEUX_FRANCE.forEach(l => { l.tarif = classifierTarif(l.nom); l.source = 'sélection éditoriale'; });
-
-  const ARTISANS_FRANCE = [
-    ];
-  
 
 // ============================================================
 // AUTOCOMPLETE
@@ -899,6 +937,53 @@ function projectionSurPolyligne(lat, lon, coords) {
 // ============================================================
 
 // Classification gratuit/payant par défaut selon le type de lieu (faute de donnée tarifaire fiable)
+// ============================================================
+// PRODUITS DU TERROIR — suggestions par grande zone géographique
+// Pas une recherche de boutique précise : un repère culinaire/artisanal pour
+// "penser à acheter" quelque chose de typique si le trajet traverse cette zone.
+// Chaque zone est définie par un centre approximatif + un rayon d'influence en km.
+// ============================================================
+const PRODUITS_TERROIR = [
+  { nom: "Val de Loire", lat: 47.4, lon: 0.8, rayonKm: 90,
+    produits: ["vin de Loire (Chinon, Bourgueil, Vouvray)", "rillettes du Mans ou de Tours", "fromage de chèvre (Sainte-Maure-de-Touraine)"] },
+  { nom: "Beauce / Loir-et-Cher", lat: 48.0, lon: 1.5, rayonKm: 60,
+    produits: ["miel de Beauce", "safran du Gâtinais", "lentilles ou céréales locales"] },
+  { nom: "Île-de-France", lat: 48.85, lon: 2.35, rayonKm: 50,
+    produits: ["Brie de Meaux ou de Melun", "miel urbain parisien", "cresson de fontaine"] },
+  { nom: "Normandie", lat: 49.1, lon: -0.5, rayonKm: 100,
+    produits: ["camembert fermier", "cidre et calvados", "beurre et crème d'Isigny"] },
+  { nom: "Bretagne", lat: 48.2, lon: -2.9, rayonKm: 120,
+    produits: ["beurre salé et galettes", "cidre breton", "huîtres et coquillages"] },
+  { nom: "Bourgogne", lat: 47.05, lon: 4.4, rayonKm: 90,
+    produits: ["vin de Bourgogne", "moutarde de Dijon", "fromage Époisses"] },
+  { nom: "Provence", lat: 43.9, lon: 5.4, rayonKm: 100,
+    produits: ["huile d'olive", "miel de lavande", "fruits confits et nougat"] },
+  { nom: "Côte d'Azur / Alpes-Maritimes", lat: 43.7, lon: 7.2, rayonKm: 60,
+    produits: ["socca et fougasse niçoise", "huile d'olive de Nice", "fleurs de Grasse confites"] },
+  { nom: "Alpes", lat: 45.9, lon: 6.5, rayonKm: 90,
+    produits: ["fromages d'alpage (Beaufort, Reblochon)", "miel de montagne", "charcuterie savoyarde"] },
+  { nom: "Aquitaine / Bordeaux", lat: 44.8, lon: -0.6, rayonKm: 90,
+    produits: ["vin de Bordeaux", "canelés", "huîtres du bassin d'Arcachon"] },
+  { nom: "Pays basque", lat: 43.4, lon: -1.4, rayonKm: 60,
+    produits: ["jambon de Bayonne", "gâteau basque", "piment d'Espelette"] },
+  { nom: "Périgord", lat: 45.0, lon: 0.9, rayonKm: 70,
+    produits: ["foie gras et confits", "noix du Périgord", "truffes"] },
+];
+
+// Trouve les produits du terroir pertinents pour un trajet, en testant les points le long de la route
+function trouverProduitsTerroir(A, B, coordsRoute) {
+  const points = coordsRoute && coordsRoute.length > 1
+    ? coordsRoute.filter((_, i) => i % Math.max(1, Math.floor(coordsRoute.length / 20)) === 0).map(c => ({ lat: c[1], lon: c[0] }))
+    : [{ lat: A.lat, lon: A.lon }, { lat: B.lat, lon: B.lon }];
+
+  const zonesTouchees = [];
+  for (const zone of PRODUITS_TERROIR) {
+    const touche = points.some(p => distanceKm(p.lat, p.lon, zone.lat, zone.lon) <= zone.rayonKm);
+    if (touche) zonesTouchees.push(zone);
+  }
+  return zonesTouchees.slice(0, 2); // pas plus de 2 zones pour rester lisible dans le résumé
+}
+
 const TARIF_PAR_TYPE = {
   'château': 'payant',
   'musée': 'payant',
@@ -916,8 +1001,8 @@ const TARIF_PAR_TYPE = {
   'menhir': 'gratuit (accès libre la plupart du temps)',
   'dolmen': 'gratuit (accès libre la plupart du temps)',
   'écomusée': 'payant',
-    'manufacture': 'à vérifier (souvent visite guidée payante, boutique libre)',
-    'artisanat': 'gratuit (boutique en accès libre, achat optionnel)',
+  'manufacture': 'à vérifier (souvent visite guidée payante, boutique libre)',
+  'artisanat': 'gratuit (boutique en accès libre, achat optionnel)',
 };
 
 // Catégories Wikidata interrogées (Q-codes), avec leur étiquette de type pour le tarif
@@ -933,7 +1018,7 @@ const CATEGORIES_WIKIDATA = [
   { qid: 'Q101659', type: 'dolmen' },          // dolmen préhistorique
   { qid: 'Q839954', type: 'site archéologique' }, // site archéologique / vestiges
   { qid: 'Q756102', type: 'écomusée' },        // musée en plein air / écomusée (artisanat, savoir-faire local)
-  { qid: 'Q380342', type: 'manufacture' },     // manufacture / atelier artisanal historique
+  { qid: 'Q380342', type: 'manufacture' },     // manufacture / atelier artisanal historique (porcelaine, tapisserie, etc.)
 ];
 
 async function rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax) {
@@ -943,7 +1028,7 @@ async function rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax) {
   const LIMITE_PAR_CATEGORIE = 6;
   const sousRequetes = CATEGORIES_WIKIDATA.map(cat => `
     {
-      SELECT ?place ?placeLabel ?location ?desc (wd:${cat.qid} AS ?cat) WHERE {
+      SELECT ?place ?placeLabel ?location ?desc ?image (wd:${cat.qid} AS ?cat) WHERE {
         SERVICE wikibase:box {
           ?place wdt:P625 ?location .
           bd:serviceParam wikibase:cornerSouthWest "Point(${lonMin} ${latMin})"^^geo:wktLiteral .
@@ -951,16 +1036,26 @@ async function rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax) {
         }
         ?place wdt:P31/wdt:P279* wd:${cat.qid} .
         OPTIONAL { ?place schema:description ?desc . FILTER(LANG(?desc) = "fr") }
+        OPTIONAL { ?place wdt:P18 ?image . }
         SERVICE wikibase:label { bd:serviceParam wikibase:language "fr". }
       } LIMIT ${LIMITE_PAR_CATEGORIE}
     }
   `).join(' UNION ');
 
-  const query = `SELECT ?place ?placeLabel ?location ?desc ?cat WHERE { ${sousRequetes} }`;
+  const query = `SELECT ?place ?placeLabel ?location ?desc ?image ?cat WHERE { ${sousRequetes} }`;
+  // POST plutôt que GET : la requête combinée dépasse souvent 8000+ caractères encodés,
+  // ce qui fait échouer silencieusement les requêtes GET (limite de longueur d'URL).
   const url = `https://query.wikidata.org/sparql`;
-    const resultats = [];
-    try {
-          const resp = await fetch(url, { method: 'POST', headers: { 'Accept': 'application/sparql-results+json', 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'query=' + encodeURIComponent(query) + '&format=json' });
+  const resultats = [];
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/sparql-results+json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'query=' + encodeURIComponent(query) + '&format=json',
+    });
     if (!resp.ok) return resultats;
     const data = await resp.json();
     for (const row of data.results.bindings) {
@@ -977,6 +1072,7 @@ async function rechercherLieuxWikidata(latMin, lonMin, latMax, lonMax) {
         score: 3, // score par défaut, faute de notation fiable disponible
         duree: (catInfo.type === 'château' || catInfo.type === 'musée' || catInfo.type === 'écomusée') ? 25 : 10,
         resume: row.desc ? row.desc.value.charAt(0).toUpperCase() + row.desc.value.slice(1) + '.' : `${catInfo.type.charAt(0).toUpperCase() + catInfo.type.slice(1)} repéré(e) via Wikidata, à proximité de votre trajet.`,
+        image: row.image ? row.image.value : null,
         tarif: TARIF_PAR_TYPE[catInfo.type] || 'à vérifier',
         source: 'wikidata',
         typeWikidata: catInfo.type,
@@ -1154,8 +1250,9 @@ async function genererParcours() {
     }
 
     const baseManuelleComplete = [...LIEUX_FRANCE, ...ARTISANS_FRANCE];
-        const lieuxWikidataDedupliques = dedupliquerLieux(baseManuelleComplete, lieuxWikidata);
-        const basePlaceCombinee = [...baseManuelleComplete, ...lieuxWikidataDedupliques];
+    const lieuxWikidataDedupliques = dedupliquerLieux(baseManuelleComplete, lieuxWikidata);
+    const basePlaceCombinee = [...baseManuelleComplete, ...lieuxWikidataDedupliques];
+
     // Tous les candidats valables sur le couloir du trajet (hors A et B)
     let candidatsToutes = basePlaceCombinee
       .filter(l => l.id !== A.id && l.id !== B.id)
@@ -1170,12 +1267,12 @@ async function genererParcours() {
     // --- Sélection équilibrée : on répartit les candidats retenus autour de CHAQUE point d'ancrage ---
     // plutôt que de prendre les N premiers dans l'ordre géographique (ce qui favorisait le départ).
     // On applique aussi un ratio gratuit/payant pour privilégier les découvertes gratuites.
-    const maxParZone = modeActuel === 'tortue' ? 4 : modeActuel === 'lievre' ? 2 : 3;
+    const maxParZone = modeActuel === 'tortue' ? 6 : modeActuel === 'lievre' ? 3 : 4;
     const zonesInternes = pointsAncrage.filter(p => p.label !== 'départ' && p.label !== 'arrivée');
     const largeurZoneT = zonesInternes.length > 0 ? (1 / (zonesInternes.length + 1)) * 0.9 : 1;
 
     const estGratuit = (l) => (l.tarif || '').startsWith('gratuit');
-    const RATIO_GRATUIT = 0.7; // 70% gratuit / 30% payant visé dans la sélection
+    const RATIO_GRATUIT = 0.6; // 60% gratuit / 40% payant — légèrement assoupli pour laisser respirer la diversité
 
     // Devine le "type" d'un lieu pour la diversification (église, château, point de vue...),
     // à partir de son champ source si dispo, sinon par mots-clés dans le nom.
@@ -1189,27 +1286,44 @@ async function genererParcours() {
       if (/menhir/.test(n)) return 'menhir';
       if (/dolmen/.test(n)) return 'dolmen';
       if (/pont/.test(n)) return 'pont';
+      if (/manufacture/.test(n)) return 'manufacture';
       return 'autre';
+    }
+
+    // Types jugés "courants" dans Wikidata (donc qui dominent numériquement les résultats bruts) :
+    // on les pénalise légèrement dans le tri pour laisser émerger les types rares (manufacture, point de
+    // vue, site archéologique...) qui sinon n'ont jamais de tour de sélection avant la limite atteinte.
+    const TYPES_COURANTS = new Set(['église', 'dolmen', 'menhir']);
+    function scoreAjuste(l) {
+      return TYPES_COURANTS.has(typeApprox(l)) ? l.score - 1 : l.score + 1;
     }
 
     function selectionnerAvecRatio(liste, n) {
       // 1. Mélange aléatoirement la liste avant tri, pour ne jamais favoriser l'ordre d'arrivée des données
       const melangee = [...liste].sort(() => Math.random() - 0.5);
-      const gratuits = melangee.filter(estGratuit).sort((a, b) => b.score - a.score);
-      const payants = melangee.filter(l => !estGratuit(l)).sort((a, b) => b.score - a.score);
+      const gratuits = melangee.filter(estGratuit).sort((a, b) => scoreAjuste(b) - scoreAjuste(a));
+      const payants = melangee.filter(l => !estGratuit(l)).sort((a, b) => scoreAjuste(b) - scoreAjuste(a));
 
-      // 2. Sélection avec diversification de type : à chaque tour, on prend le meilleur candidat
-      // d'un type pas encore représenté avant d'en reprendre un deuxième du même type.
+      // 2. Sélection avec diversification de type STRICTE : on parcourt la liste des types disponibles
+      // dans l'ordre, un par un, et on ne reprend un type déjà vu qu'une fois tous les types épuisés au
+      // moins une fois — ça garantit qu'un type rare (1 seul candidat) passe avant un 3e ou 4e dolmen.
       function selectionnerDiversifie(source, nbVoulu) {
+        const parType = new Map();
+        for (const l of source) {
+          const t = typeApprox(l);
+          if (!parType.has(t)) parType.set(t, []);
+          parType.get(t).push(l);
+        }
         const retenus = [];
-        const typesUtilises = new Set();
-        const restants = [...source];
-        while (retenus.length < nbVoulu && restants.length > 0) {
-          let idx = restants.findIndex(l => !typesUtilises.has(typeApprox(l)));
-          if (idx === -1) idx = 0; // tous les types déjà vus une fois : on reprend depuis le début
-          const choisi = restants.splice(idx, 1)[0];
-          retenus.push(choisi);
-          typesUtilises.add(typeApprox(choisi));
+        let tourSansAjout = false;
+        while (retenus.length < nbVoulu && !tourSansAjout) {
+          tourSansAjout = true;
+          for (const [, lieuxDuType] of parType) {
+            if (lieuxDuType.length === 0) continue;
+            retenus.push(lieuxDuType.shift());
+            tourSansAjout = false;
+            if (retenus.length >= nbVoulu) break;
+          }
         }
         return retenus;
       }
@@ -1246,7 +1360,7 @@ async function genererParcours() {
     } else {
       candidatsBruts = selectionnerAvecRatio(candidatsToutes, 8).sort((a, b) => a.t - b.t);
     }
-    candidatsBruts = candidatsBruts.slice(0, 12); // limite raisonnable d'appels OSRM de détour
+    candidatsBruts = candidatsBruts.slice(0, 16); // limite raisonnable d'appels OSRM de détour
 
     // Calcul du détour réel pour chaque candidat : A -> lieu -> B, comparé à A -> B direct
     const candidatsAvecDetour = [];
@@ -1280,9 +1394,21 @@ async function genererParcours() {
     // --- Affichage résumé ---
     const modeLabel = { tortue:"🐢 Tortue", marche:"🚶 Marche", lievre:"🐇 Lièvre" }[modeActuel];
     const routeTag = routeReelle ? '· route réelle' : '· estimation à vol d\'oiseau';
+
+    const zonesTerroir = trouverProduitsTerroir(A, B, routeReelle ? routeReelle.coordonnees : null);
+    let messageTerroir = '';
+    if (zonesTerroir.length > 0) {
+      const lignes = zonesTerroir.map(z => {
+        const produit = z.produits[Math.floor(Math.random() * z.produits.length)];
+        return `🧺 Vous traversez la zone <strong>${z.nom}</strong> — pensez à découvrir : <strong>${produit}</strong>.`;
+      });
+      messageTerroir = `<div class="terroir-tip">${lignes.join('<br>')}</div>`;
+    }
+
     summary.innerHTML = `${candidatsAvecDetour.length} étape(s) patrimoniale(s) trouvée(s) en mode ${modeLabel}, à vous de choisir !
       <span class="sub">${A.nom} → ${B.nom} · trajet direct ${Math.round(distanceTotale)} km · ${formatTemps(Math.round(tempsTrajetEstime))} ${routeTag}</span>`
-      + (avertissementRoute ? `<span class="sub" style="color:#c98c4c;">⚠ ${avertissementRoute}</span>` : '');
+      + (avertissementRoute ? `<span class="sub" style="color:#c98c4c;">⚠ ${avertissementRoute}</span>` : '')
+      + messageTerroir;
 
     afficherListeCandidats();
     rafraichirCarte();
@@ -1348,8 +1474,12 @@ function afficherListeCandidats() {
     const tarif = lieu.tarif || 'à vérifier sur place';
     const tarifClass = tarif.startsWith('gratuit') ? 'gratuit' : tarif === 'payant' ? 'payant' : 'inconnu';
     const sourceTag = lieu.source === 'wikidata' ? ' · via Wikidata' : '';
+    const imageHtml = lieu.image
+      ? `<img src="${lieu.image}" alt="${lieu.nom}" class="lieu-image" loading="lazy" onerror="this.parentElement.style.display='none';">`
+      : `<div class="lieu-image lieu-image-placeholder">🏞️</div>`;
     div.innerHTML = `
       <div class="checkbox-wrap" onclick="toggleCandidat('${lieu.id}')">
+        ${imageHtml}
         <div class="checkbox-visual">${isChecked ? '✓' : ''}</div>
         <div style="flex:1;">
           <div class="stars">${'⭐'.repeat(lieu.score)}</div>
