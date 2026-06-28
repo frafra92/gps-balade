@@ -1685,15 +1685,29 @@ async function genererParcours() {
     const suggestionVente = SUGGESTIONS_VENTE_DIRECTE[Math.floor(Math.random() * SUGGESTIONS_VENTE_DIRECTE.length)];
     const messageVenteDirecte = `<div class="terroir-tip">🚜 Sur votre trajet, gardez l'œil ouvert pour <strong>${suggestionVente}</strong> — souvent en libre-service, pas toujours signalé sur les cartes.</div>`;
 
-    // Récapitulatif des pauses conseillées (toutes les heures de conduite)
+    // Récapitulatif des pauses conseillées (toutes les heures de conduite), avec la découverte
+    // associée quand une étape patrimoniale se trouve à proximité de l'heure de pause.
     let messagePauses = '';
+    const TOLERANCE_PAUSE_MIN_TXT = 20;
     const nbPausesConseillees = Math.floor(tempsTrajetEstime / 60);
     if (nbPausesConseillees >= 1) {
-      const horaires = [];
+      const lignesPauses = [];
       for (let p = 1; p <= nbPausesConseillees; p++) {
-        horaires.push(formatTemps(p * 60));
+        const fraction = (p * 60) / tempsTrajetEstime;
+        let lieuProche = null, meilleurEcart = Infinity;
+        for (const lieu of candidatsAvecDetour) {
+          if (lieu.t == null) continue;
+          const ecart = Math.abs(lieu.t - fraction) * tempsTrajetEstime;
+          if (ecart < meilleurEcart) { meilleurEcart = ecart; lieuProche = lieu; }
+        }
+        const horaire = formatTemps(p * 60);
+        if (lieuProche && meilleurEcart <= TOLERANCE_PAUSE_MIN_TXT) {
+          lignesPauses.push(`vers ${horaire} → <strong>${lieuProche.nom}</strong>`);
+        } else {
+          lignesPauses.push(`vers ${horaire}`);
+        }
       }
-      messagePauses = `<div class="pause-recap">☕ ${nbPausesConseillees} pause(s) conseillée(s) (toutes les heures de conduite) — repérées sur la carte, vers ${horaires.join(', ')} de route.</div>`;
+      messagePauses = `<div class="pause-recap">☕ ${nbPausesConseillees} pause(s) conseillée(s) (toutes les heures de conduite), si possible près d'une découverte : ${lignesPauses.join(' · ')}.</div>`;
     }
 
     // Comparatif des variantes de trajet (autoroute / hybride par segments / sans autoroute), avec coût estimé
@@ -1961,7 +1975,11 @@ function dessinerCarte(A, B, candidats, selection, coordsRoute, dureeTotaleMin) 
   marqueursActuels.push(trace);
 
   // --- Marqueurs "Pause conseillée" toutes les heures de conduite ---
+  // Chaque pause théorique est, si possible, décalée pour coïncider avec une vraie découverte
+  // (lieu patrimonial déjà identifié) trouvée dans une fenêtre de tolérance de ±20 minutes —
+  // l'intérêt du GPS Balade étant de transformer la pause en moment de visite, pas juste un arrêt.
   const TRANCHE_PAUSE_MIN = 60;
+  const TOLERANCE_PAUSE_MIN = 20;
   const dureeMin = dureeTotaleMin || 0;
   if (dureeMin > TRANCHE_PAUSE_MIN && coordsRoute && coordsRoute.length > 1) {
     const nbPauses = Math.floor(dureeMin / TRANCHE_PAUSE_MIN);
@@ -1971,8 +1989,30 @@ function dessinerCarte(A, B, candidats, selection, coordsRoute, dureeTotaleMin) 
       const [lon, lat] = coordsRoute[idx];
       const heuresEcoulees = (p * TRANCHE_PAUSE_MIN) / 60;
       const labelHeure = heuresEcoulees === Math.floor(heuresEcoulees) ? `${heuresEcoulees} h` : `${Math.floor(heuresEcoulees)} h ${TRANCHE_PAUSE_MIN/2}`;
-      const mPause = L.marker([lat, lon], { icon: icone('☕', '#d23c32', 26) }).addTo(carteLeafletInstance)
-        .bindPopup(`<strong>☕ Pause conseillée</strong><br>après environ ${labelHeure} de route`);
+
+      // Cherche, parmi les candidats déjà trouvés sur le trajet, celui dont la position (en
+      // fraction du temps total) tombe le plus proche de cette pause théorique.
+      let lieuPause = null, meilleurEcartMin = Infinity;
+      for (const lieu of candidatsOrdonnes) {
+        if (lieu.t == null) continue;
+        const ecartFractionMin = Math.abs(lieu.t - fraction) * dureeMin;
+        if (ecartFractionMin < meilleurEcartMin) {
+          meilleurEcartMin = ecartFractionMin;
+          lieuPause = lieu;
+        }
+      }
+      const aUneDecouverte = lieuPause && meilleurEcartMin <= TOLERANCE_PAUSE_MIN;
+
+      let latPause = lat, lonPause = lon, popupPause;
+      if (aUneDecouverte) {
+        latPause = lieuPause.lat; lonPause = lieuPause.lon;
+        popupPause = `<strong>☕ Pause conseillée</strong><br>après environ ${labelHeure} de route<br>→ idéal pour visiter <strong>${lieuPause.nom}</strong> juste à côté`;
+      } else {
+        popupPause = `<strong>☕ Pause conseillée</strong><br>après environ ${labelHeure} de route`;
+      }
+
+      const mPause = L.marker([latPause, lonPause], { icon: icone('☕', '#d23c32', 26) }).addTo(carteLeafletInstance)
+        .bindPopup(popupPause);
       marqueursActuels.push(mPause);
     }
   }
