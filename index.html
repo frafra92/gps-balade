@@ -253,11 +253,31 @@
   .comparatif-ligne {
     font-size: 0.78rem;
     color: #d8d2c4;
-    padding: 4px 0;
+    padding: 8px 0;
     border-bottom: 1px solid #22252a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
   }
   .comparatif-ligne:last-of-type { border-bottom: none; }
   .comparatif-ligne strong { color: var(--text); }
+  .comparatif-choisir-btn {
+    background: #2a2d33;
+    color: var(--gold);
+    border: 1px solid var(--gold);
+    border-radius: 14px;
+    padding: 4px 12px;
+    font-size: 0.68rem;
+    font-weight: bold;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .comparatif-choisir-btn:hover {
+    background: var(--gold);
+    color: #1a1408;
+  }
   .comparatif-note {
     font-size: 0.68rem;
     color: var(--muted);
@@ -1709,8 +1729,6 @@ async function genererParcours() {
       candidatsAvecDetour.push({ ...lieu, detourKm: Math.max(0, detourKm), detourMin: Math.max(0, detourMin) });
     }
 
-    etatActuel = { A, B, routeDirecte: routeReelle, candidats: candidatsAvecDetour, selection: new Set(), tempsTrajetEstime, distanceTotale };
-
     // Trajet hybride : calculé maintenant que les lieux patrimoniaux du trajet sont connus,
     // pour pouvoir repérer ceux proches de chaque segment candidat à un détour départementale.
     let routeHybride = null;
@@ -1721,6 +1739,16 @@ async function genererParcours() {
         console.warn('Calcul du trajet hybride indisponible :', e.message);
       }
     }
+
+    etatActuel = {
+      A, B, routeDirecte: routeReelle, candidats: candidatsAvecDetour, selection: new Set(),
+      tempsTrajetEstime, distanceTotale,
+      // Les 3 variantes de trajet, pour permettre de choisir laquelle devient la référence
+      // affichée sur la carte / utilisée pour les pauses. Les LIEUX et détours restent les
+      // mêmes quelle que soit la variante choisie — seul le tracé/temps de référence change.
+      variantes: { autoroute: routeReelle, hybride: routeHybride, sansAutoroute: routeSansAutoroute },
+      varianteActive: 'autoroute',
+    };
 
     // --- Affichage résumé ---
     const modeLabel = { tortue:"🐢 Tortue", marche:"🚶 Marche", lievre:"🐇 Lièvre" }[modeActuel];
@@ -1770,7 +1798,7 @@ async function genererParcours() {
       const coutAvecAutoroute = estimerCoutTrajet(routeReelle.distanceKm, routeSansAutoroute ? routeSansAutoroute.distanceKm : null, tarifKmTrajet);
       const lignesComparatif = [];
       lignesComparatif.push({
-        label: '🛣️ Avec autoroute', distanceKm: routeReelle.distanceKm, dureeMin: routeReelle.dureeMin,
+        cle: 'autoroute', label: '🛣️ Avec autoroute', distanceKm: routeReelle.distanceKm, dureeMin: routeReelle.dureeMin,
         cout: coutAvecAutoroute,
       });
       if (routeHybride && Math.abs(routeHybride.distanceKm - routeReelle.distanceKm) > 1) {
@@ -1779,26 +1807,29 @@ async function genererParcours() {
         const detailHybride = nbLieux > 0
           ? ` · passe près de ${nbLieux} lieu(x) patrimonial(aux) sur les sections départementales`
           : ` · ${routeHybride.nbSegmentsSansAutoroute} section(s) en départementale`;
-        lignesComparatif.push({ label: '🔀 Hybride (par segments)', distanceKm: routeHybride.distanceKm, dureeMin: routeHybride.dureeMin, cout: coutHybride, detail: detailHybride });
+        lignesComparatif.push({ cle: 'hybride', label: '🔀 Hybride (par segments)', distanceKm: routeHybride.distanceKm, dureeMin: routeHybride.dureeMin, cout: coutHybride, detail: detailHybride });
       } else if (routeMix && Math.abs(routeMix.distanceKm - routeReelle.distanceKm) > 1) {
         const coutMix = estimerCoutTrajet(routeMix.distanceKm, routeSansAutoroute ? routeSansAutoroute.distanceKm : null, tarifKmTrajet);
-        lignesComparatif.push({ label: '🔀 Mix (approx.)', distanceKm: routeMix.distanceKm, dureeMin: routeMix.dureeMin, cout: coutMix });
+        lignesComparatif.push({ cle: null, label: '🔀 Mix (approx.)', distanceKm: routeMix.distanceKm, dureeMin: routeMix.dureeMin, cout: coutMix });
       }
       if (routeSansAutoroute) {
         const coutSansAutoroute = estimerCoutTrajet(routeSansAutoroute.distanceKm, routeSansAutoroute.distanceKm, tarifKmTrajet);
-        lignesComparatif.push({ label: '🌾 Sans autoroute', distanceKm: routeSansAutoroute.distanceKm, dureeMin: routeSansAutoroute.dureeMin, cout: coutSansAutoroute });
+        lignesComparatif.push({ cle: 'sansAutoroute', label: '🌾 Sans autoroute', distanceKm: routeSansAutoroute.distanceKm, dureeMin: routeSansAutoroute.dureeMin, cout: coutSansAutoroute });
       }
       if (lignesComparatif.length > 1) {
-        const lignesHtml = lignesComparatif.map(l =>
-          `<div class="comparatif-ligne"><strong>${l.label}</strong> · ${Math.round(l.distanceKm)} km · ${formatTemps(Math.round(l.dureeMin))} · ≈ ${l.cout.total.toFixed(0)} € (péage + carburant)${l.detail || ''}</div>`
-        ).join('');
+        const lignesHtml = lignesComparatif.map(l => {
+          const bouton = l.cle
+            ? `<button class="comparatif-choisir-btn" onclick="choisirVarianteTrajet('${l.cle}')">Choisir ce trajet</button>`
+            : '';
+          return `<div class="comparatif-ligne"><strong>${l.label}</strong> · ${Math.round(l.distanceKm)} km · ${formatTemps(Math.round(l.dureeMin))} · ≈ ${l.cout.total.toFixed(0)} € (péage + carburant)${l.detail || ''}${bouton}</div>`;
+        }).join('');
         const noteZone = zoneTarifNom
           ? `péage estimé à ${tarifKmTrajet}€/km évité (zone détectée : ${zoneTarifNom})`
           : `péage estimé à ${tarifKmTrajet}€/km évité (moyenne nationale, zone non reconnue)`;
         messageComparatif = `<div class="comparatif-trajets">
-          <div class="comparatif-titre">Comparatif des trajets possibles (estimation)</div>
+          <div class="comparatif-titre">Comparatif des trajets possibles (estimation) — choisissez celui à afficher sur la carte</div>
           ${lignesHtml}
-          <div class="comparatif-note">Estimation approximative — ${noteZone}, carburant à ${CONSO_L_100KM}L/100km. L'option hybride teste plusieurs sections autoroute/départementale et garde le meilleur compromis par segment — approche artisanale, pas un algorithme d'optimisation garanti.</div>
+          <div class="comparatif-note">Estimation approximative — ${noteZone}, carburant à ${CONSO_L_100KM}L/100km. Les lieux et détours restent les mêmes pour les 3 options ; seul le tracé et le temps de conduite pris en compte pour les pauses changent selon votre choix.</div>
         </div>`;
       }
     }
@@ -1832,14 +1863,25 @@ function toggleCandidat(id) {
 }
 
 function rafraichirCarte() {
+  const variante = etatActuel.variantes ? etatActuel.variantes[etatActuel.varianteActive] : etatActuel.routeDirecte;
   dessinerCarte(
     etatActuel.A,
     etatActuel.B,
     etatActuel.candidats,
     etatActuel.selection,
-    etatActuel.routeDirecte ? etatActuel.routeDirecte.coordonnees : null,
-    etatActuel.tempsTrajetEstime
+    variante ? variante.coordonnees : null,
+    variante ? variante.dureeMin : etatActuel.tempsTrajetEstime
   );
+}
+
+// Change la variante de trajet utilisée comme référence pour la carte et les pauses
+// (les lieux/détours restent calculés par rapport au trajet autoroute initial — seul le
+// tracé affiché et le temps de conduite pris en compte pour les pauses changent).
+function choisirVarianteTrajet(nomVariante) {
+  if (!etatActuel.variantes || !etatActuel.variantes[nomVariante]) return;
+  etatActuel.varianteActive = nomVariante;
+  afficherListeCandidats();
+  rafraichirCarte();
 }
 
 function afficherListeCandidats() {
