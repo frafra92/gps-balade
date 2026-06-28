@@ -1003,9 +1003,12 @@ async function obtenirRouteSansAutoroute(A, B) {
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/${A.lon},${A.lat};${B.lon},${B.lat}?overview=full&geometries=geojson&exclude=motorway`;
     const response = await fetch(url);
-    if (!response.ok) return null;
+    if (!response.ok) { console.warn('Trajet sans autoroute indisponible : HTTP', response.status); return null; }
     const data = await response.json();
-    if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) return null;
+    if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
+      console.warn('Trajet sans autoroute indisponible :', data.code || 'réponse invalide');
+      return null;
+    }
     const route = data.routes[0];
     return {
       distanceKm: route.distance / 1000,
@@ -1746,7 +1749,7 @@ async function genererParcours() {
       // Les 3 variantes de trajet, pour permettre de choisir laquelle devient la référence
       // affichée sur la carte / utilisée pour les pauses. Les LIEUX et détours restent les
       // mêmes quelle que soit la variante choisie — seul le tracé/temps de référence change.
-      variantes: { autoroute: routeReelle, hybride: routeHybride, sansAutoroute: routeSansAutoroute },
+      variantes: { autoroute: routeReelle, hybride: routeHybride, sansAutoroute: routeSansAutoroute, mix: routeMix },
       varianteActive: 'autoroute',
     };
 
@@ -1810,13 +1813,14 @@ async function genererParcours() {
         lignesComparatif.push({ cle: 'hybride', label: '🔀 Hybride (par segments)', distanceKm: routeHybride.distanceKm, dureeMin: routeHybride.dureeMin, cout: coutHybride, detail: detailHybride });
       } else if (routeMix && Math.abs(routeMix.distanceKm - routeReelle.distanceKm) > 1) {
         const coutMix = estimerCoutTrajet(routeMix.distanceKm, routeSansAutoroute ? routeSansAutoroute.distanceKm : null, tarifKmTrajet);
-        lignesComparatif.push({ cle: null, label: '🔀 Mix (approx.)', distanceKm: routeMix.distanceKm, dureeMin: routeMix.dureeMin, cout: coutMix });
+        lignesComparatif.push({ cle: 'mix', label: '🔀 Mix (approx.)', distanceKm: routeMix.distanceKm, dureeMin: routeMix.dureeMin, cout: coutMix });
       }
       if (routeSansAutoroute) {
         const coutSansAutoroute = estimerCoutTrajet(routeSansAutoroute.distanceKm, routeSansAutoroute.distanceKm, tarifKmTrajet);
         lignesComparatif.push({ cle: 'sansAutoroute', label: '🌾 Sans autoroute', distanceKm: routeSansAutoroute.distanceKm, dureeMin: routeSansAutoroute.dureeMin, cout: coutSansAutoroute });
       }
-      if (lignesComparatif.length > 1) {
+      const sansAutorouteIndisponible = !routeSansAutoroute;
+      if (lignesComparatif.length > 1 || sansAutorouteIndisponible) {
         const lignesHtml = lignesComparatif.map(l => {
           const bouton = l.cle
             ? `<button class="comparatif-choisir-btn" onclick="choisirVarianteTrajet('${l.cle}')">Choisir ce trajet</button>`
@@ -1826,10 +1830,14 @@ async function genererParcours() {
         const noteZone = zoneTarifNom
           ? `péage estimé à ${tarifKmTrajet}€/km évité (zone détectée : ${zoneTarifNom})`
           : `péage estimé à ${tarifKmTrajet}€/km évité (moyenne nationale, zone non reconnue)`;
+        const noteSansAutoroute = sansAutorouteIndisponible
+          ? `<div class="comparatif-note" style="color:#c98c4c;">⚠ L'option "sans autoroute" n'a pas pu être calculée pour ce trajet (service gratuit OSRM temporairement indisponible pour ce calcul précis) — réessayez plus tard si vous voulez la comparer.</div>`
+          : '';
         messageComparatif = `<div class="comparatif-trajets">
           <div class="comparatif-titre">Comparatif des trajets possibles (estimation) — choisissez celui à afficher sur la carte</div>
           ${lignesHtml}
           <div class="comparatif-note">Estimation approximative — ${noteZone}, carburant à ${CONSO_L_100KM}L/100km. Les lieux et détours restent les mêmes pour les 3 options ; seul le tracé et le temps de conduite pris en compte pour les pauses changent selon votre choix.</div>
+          ${noteSansAutoroute}
         </div>`;
       }
     }
