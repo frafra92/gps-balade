@@ -51,6 +51,13 @@
     padding: 4px 10px;
     border-radius: 20px;
   }
+  .source-flag-link {
+    color: #e0b35c;
+    text-decoration: underline;
+  }
+  .source-flag-link:hover {
+    color: var(--gold);
+  }
   .intro-box {
     background: #1d2026;
     border: 1px solid #2a2d33;
@@ -604,7 +611,7 @@
 <header>
   <h1>🧭 Balade IA</h1>
   <p>Le GPS qui transforme votre temps en découvertes</p>
-  <div class="source-flag">Contenu issu de FranceBalade.com</div>
+  <div class="source-flag">Contenu issu de <a href="https://www.francebalade.com" target="_blank" rel="noopener" class="source-flag-link">FranceBalade.com</a></div>
 </header>
 
 <div class="container">
@@ -657,14 +664,14 @@
   <div id="result-summary"></div>
   <div id="map-container"></div>
   <div id="stops-container">
-    <div id="empty-state">Tapez un départ et une arrivée — une ville, un monument connu, ou une adresse complète avec code postal (ex: 2 allée des Glycines, Orly) — choisissez un style de recherche, puis cliquez pour voir les étapes patrimoniales possibles sur votre route.</div>
+    <div id="empty-state">Tapez un départ et une arrivée — une ville, un monument connu, ou une adresse complète avec code postal (ex: 55 rue du Faubourg Saint-Honoré, Paris) — choisissez un style de recherche, puis cliquez pour voir les étapes patrimoniales possibles sur votre route.</div>
   </div>
 
 </div>
 
 <div class="footer-note">
   Démonstration de concept · contenus reformulés à partir des fiches patrimoniales de
-  <strong style="color:#c9a84c;">FranceBalade.com</strong>.<br>
+  <a href="https://www.francebalade.com" target="_blank" rel="noopener" style="color:#c9a84c; font-weight:bold; text-decoration:underline;">FranceBalade.com</a>.<br>
   Carte schématique à but illustratif (pas un calcul d'itinéraire routier réel).
 </div>
 
@@ -1436,7 +1443,7 @@ async function genererParcours() {
   const texteArrivee = document.getElementById('arrivee-input').value.trim();
   if (!texteDepart || !texteArrivee) {
     summary.innerHTML = '';
-    container.innerHTML = '<div id="empty-state">Indiquez un départ et une arrivée : un lieu de la liste proposée, ou une adresse complète (ex: 2 allée des Glycines, Orly).</div>';
+    container.innerHTML = '<div id="empty-state">Indiquez un départ et une arrivée : un lieu de la liste proposée, ou une adresse complète (ex: 55 rue du Faubourg Saint-Honoré, Paris).</div>';
     return;
   }
 
