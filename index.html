@@ -266,58 +266,21 @@
   }
 
   /* --- Carte schématique SVG --- */
-  .map-wrap {
-    background: var(--panel);
-    border: 1px solid #2a2d33;
+  /* --- Carte interactive intégrée (Leaflet / OpenStreetMap, fond de carte réel, zoomable) --- */
+  #map-container {
+    height: 380px;
     border-radius: 12px;
-    padding: 14px;
+    overflow: hidden;
     margin-bottom: 18px;
-    overflow-x: auto;
+    border: 1px solid #2a2d33;
+    background: #11141a;
   }
-  .map-wrap svg { display: block; width: 100%; height: auto; }
-
-  /* --- Modale carte plein écran (Leaflet) --- */
-  .carte-modale {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: #0a0b0d;
-    z-index: 1000;
-  }
-  #carte-leaflet {
+  #map-container .leaflet-container {
     width: 100%;
     height: 100%;
-  }
-  .carte-modale-fermer {
-    position: absolute;
-    top: 14px;
-    right: 14px;
-    z-index: 1001;
-    background: var(--gold);
-    color: #1a1408;
-    border: none;
-    padding: 10px 16px;
-    border-radius: 20px;
-    font-weight: bold;
-    font-size: 0.9rem;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    background: #11141a;
   }
   .leaflet-popup-content { font-family: 'Georgia', serif; }
-  .map-route-line { stroke: #4a3d22; stroke-width: 3; stroke-dasharray: 6 5; fill: none; }
-  .map-pin-circle { stroke: #14161a; stroke-width: 2; }
-  .map-pin-label {
-    font-family: Georgia, serif;
-    fill: var(--text);
-    font-size: 11px;
-  }
-  .map-pin-number {
-    font-family: Georgia, serif;
-    fill: #1a1408;
-    font-size: 11px;
-    font-weight: bold;
-    text-anchor: middle;
-    dominant-baseline: central;
-  }
 
   .stop {
     background: var(--panel);
@@ -415,6 +378,23 @@
     justify-content: center;
     font-size: 1.6rem;
     opacity: 0.4;
+  }
+  .map-number-badge {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #5a5d63;
+    color: #1a1408;
+    font-weight: bold;
+    font-size: 0.78rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .stop.candidate.checked .map-number-badge {
+    background: var(--gold);
   }
   .checkbox-visual {
     width: 24px;
@@ -616,17 +596,11 @@
   </div>
 
   <div id="result-summary"></div>
-  <div id="map-container" onclick="ouvrirCartePleinEcran()" style="cursor:pointer;" title="Cliquez pour agrandir la carte"></div>
+  <div id="map-container"></div>
   <div id="stops-container">
     <div id="empty-state">Tapez un départ et une arrivée — une ville, un monument connu, ou une adresse complète avec code postal (ex: 2 allée des Glycines, Orly) — choisissez un style de recherche, puis cliquez pour voir les étapes patrimoniales possibles sur votre route.</div>
   </div>
 
-</div>
-
-<!-- Modale carte plein écran (Leaflet / OpenStreetMap) -->
-<div id="carte-modale" class="carte-modale" style="display:none;">
-  <button class="carte-modale-fermer" onclick="fermerCartePleinEcran()">✕ Fermer</button>
-  <div id="carte-leaflet"></div>
 </div>
 
 <div class="footer-note">
@@ -1516,8 +1490,9 @@ function afficherListeCandidats() {
   `;
   container.appendChild(divDepart);
 
-  // Liste des candidats (dans l'ordre géographique du trajet)
-  [...etatActuel.candidats].sort((a, b) => a.t - b.t).forEach((lieu) => {
+  // Liste des candidats (dans l'ordre géographique du trajet) — la numérotation ci-dessous
+  // correspond exactement aux numéros affichés sur les marqueurs de la carte (même tri par .t).
+  [...etatActuel.candidats].sort((a, b) => a.t - b.t).forEach((lieu, index) => {
     const isChecked = etatActuel.selection.has(lieu.id);
     const div = document.createElement('div');
     div.className = 'stop candidate' + (isChecked ? ' checked' : '');
@@ -1530,6 +1505,7 @@ function afficherListeCandidats() {
       : `<div class="lieu-image lieu-image-placeholder">🏞️</div>`;
     div.innerHTML = `
       <div class="checkbox-wrap" onclick="toggleCandidat('${lieu.id}')">
+        <div class="map-number-badge">${index + 1}</div>
         ${imageHtml}
         <div class="checkbox-visual">${isChecked ? '✓' : ''}</div>
         <div style="flex:1;">
@@ -1616,135 +1592,21 @@ function formatTemps(min) {
 }
 
 // ============================================================
-// CARTE SCHÉMATIQUE (SVG, style "GPS" simplifié)
+// CARTE INTERACTIVE INTÉGRÉE (Leaflet / OpenStreetMap)
+// Affichée directement dans la page (pas en plein écran), avec un vrai fond de carte
+// zoomable, visible en même temps que la liste des étapes ci-dessous.
+// Les numéros sur la carte correspondent exactement aux numéros affichés dans la liste.
 // ============================================================
-function couleurDegrade(fractionDansLaTranche) {
-  // 0 = blanc (début de tranche, en forme), 1 = rouge (2h de route, pause conseillée)
-  const t = Math.max(0, Math.min(1, fractionDansLaTranche));
-  // Interpolation blanc (255,255,255) -> rouge (210,60,50)
-  const r = Math.round(255 + (210 - 255) * t);
-  const g = Math.round(255 + (60 - 255) * t);
-  const b = Math.round(255 + (50 - 255) * t);
-  return `rgb(${r},${g},${b})`;
-}
+let carteLeafletInstance = null;
+let marqueursActuels = [];
 
 function dessinerCarte(A, B, candidats, selection, coordsRoute, dureeTotaleMin) {
   selection = selection || new Set();
   candidats = candidats || [];
-  const W = 600, H = 300, PAD = 50;
-  const TRANCHE_MIN = 120; // 2h, déclenche la suggestion de pause
 
-  const points = [A, ...candidats, B];
-  let lats = points.map(p => p.lat), lons = points.map(p => p.lon);
-  if (coordsRoute) {
-    lats = lats.concat(coordsRoute.map(c => c[1]));
-    lons = lons.concat(coordsRoute.map(c => c[0]));
-  }
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-  const spanLat = Math.max(maxLat - minLat, 0.05);
-  const spanLon = Math.max(maxLon - minLon, 0.05);
-
-  function toXY(lat, lon) {
-    const x = PAD + ((lon - minLon) / spanLon) * (W - 2*PAD);
-    const y = (H - PAD) - ((lat - minLat) / spanLat) * (H - 2*PAD);
-    return [x, y];
-  }
-
-  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
-  svg += `<rect width="${W}" height="${H}" fill="#11141a" rx="8"/>`;
-
-  // --- Légende dégradé (uniquement si on a une durée de trajet à représenter) ---
-  const dureeMinPourLegende = dureeTotaleMin || 0;
-  if (dureeMinPourLegende > 0) {
-    const legendY = H - 14;
-    svg += `<text x="${PAD}" y="${legendY}" class="map-pin-label" font-size="9" fill="#9a948a">Frais</text>`;
-    svg += `<text x="${W-PAD}" y="${legendY}" class="map-pin-label" font-size="9" fill="#9a948a" text-anchor="end">Pause conseillée (2h)</text>`;
-  }
-
-  // --- Tracé du trajet, en dégradé blanc -> rouge par tranche de 2h ---
-  const dureeMin = dureeTotaleMin || 0;
-  let pointsCourbe; // liste de {x, y, tMin} où tMin = minutes de conduite écoulées depuis le départ
-  if (coordsRoute && coordsRoute.length > 1) {
-    const pas = Math.max(1, Math.floor(coordsRoute.length / 250));
-    const echantillon = coordsRoute.filter((_, i) => i % pas === 0);
-    pointsCourbe = echantillon.map((c, i) => ({
-      ...{x: toXY(c[1], c[0])[0], y: toXY(c[1], c[0])[1]},
-      tMin: dureeMin * (i / Math.max(echantillon.length - 1, 1)),
-    }));
-  } else {
-    const N = 40;
-    pointsCourbe = Array.from({length: N+1}, (_, i) => {
-      const frac = i / N;
-      const lat = A.lat + (B.lat - A.lat) * frac;
-      const lon = A.lon + (B.lon - A.lon) * frac;
-      const [x, y] = toXY(lat, lon);
-      return { x, y, tMin: dureeMin * frac };
-    });
-  }
-
-  for (let i = 0; i < pointsCourbe.length - 1; i++) {
-    const p1 = pointsCourbe[i], p2 = pointsCourbe[i+1];
-    const fractionTranche = (p1.tMin % TRANCHE_MIN) / TRANCHE_MIN;
-    const couleur = dureeMin > 0 ? couleurDegrade(fractionTranche) : '#8a7330';
-    svg += `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${couleur}" stroke-width="4" stroke-linecap="round"/>`;
-  }
-  // --- Marqueurs "Pause conseillée" toutes les 2h ---
-  if (dureeMin > TRANCHE_MIN) {
-    const nbPauses = Math.floor(dureeMin / TRANCHE_MIN);
-    for (let p = 1; p <= nbPauses; p++) {
-      const tCiblee = p * TRANCHE_MIN;
-      // point le plus proche de ce temps cumulé
-      let meilleur = pointsCourbe[0];
-      for (const pt of pointsCourbe) {
-        if (Math.abs(pt.tMin - tCiblee) < Math.abs(meilleur.tMin - tCiblee)) meilleur = pt;
-      }
-      svg += `<circle cx="${meilleur.x}" cy="${meilleur.y}" r="9" fill="#1a1c21" stroke="#d23c32" stroke-width="2"/>`;
-      svg += `<text x="${meilleur.x}" y="${meilleur.y+1}" text-anchor="middle" dominant-baseline="central" font-size="10">☕</text>`;
-      svg += `<text x="${meilleur.x}" y="${meilleur.y - 16}" class="map-pin-label" font-size="9" fill="#d99a5c" text-anchor="middle">Pause conseillée</text>`;
-    }
-  }
-
-  // --- Tous les candidats (cochés en doré, non cochés en gris discret) ---
-  candidats.forEach((lieu) => {
-    const [x, y] = toXY(lieu.lat, lieu.lon);
-    const isChecked = selection.has(lieu.id);
-    const color = isChecked ? '#c9a84c' : '#5a5d63';
-    const r = isChecked ? 10 : 7;
-    svg += `<circle cx="${x}" cy="${y}" r="${r}" fill="${color}" class="map-pin-circle" opacity="${isChecked ? 1 : 0.75}"/>`;
-    if (isChecked) {
-      svg += `<text x="${x}" y="${y+1}" class="map-pin-number" text-anchor="middle">✓</text>`;
-    }
-    const labelY = y > H/2 ? y + 18 : y - 14;
-    svg += `<text x="${x}" y="${labelY}" class="map-pin-label" font-size="${isChecked ? 11 : 9}" fill="${isChecked ? '#ece7da' : '#787b80'}" text-anchor="middle">${lieu.nom.length > 18 ? lieu.nom.slice(0,16)+'…' : lieu.nom}</text>`;
-  });
-
-  // --- Départ et arrivée (toujours par-dessus) ---
-  [{...A, isDepart:true}, {...B, isArrivee:true}].forEach((lieu) => {
-    const [x, y] = toXY(lieu.lat, lieu.lon);
-    const label = lieu.isDepart ? '🚩' : '🏁';
-    svg += `<circle cx="${x}" cy="${y}" r="12" fill="#5d7a63" class="map-pin-circle"/>`;
-    svg += `<text x="${x}" y="${y+1}" class="map-pin-number" text-anchor="middle">${label}</text>`;
-    const labelY = y > H/2 ? y + 20 : y - 18;
-    svg += `<text x="${x}" y="${labelY}" class="map-pin-label" font-size="11" font-weight="bold" text-anchor="middle">${lieu.nom.length > 18 ? lieu.nom.slice(0,16)+'…' : lieu.nom}</text>`;
-  });
-
-  svg += `</svg>`;
-  document.getElementById('map-container').innerHTML = `<div class="map-wrap">${svg}</div>`;
-}
-
-// ============================================================
-// CARTE PLEIN ÉCRAN INTERACTIVE (Leaflet / OpenStreetMap, vrai fond de carte avec zoom)
-// ============================================================
-let carteLeafletInstance = null;
-
-function ouvrirCartePleinEcran() {
-  if (!etatActuel.A || !etatActuel.B) return; // pas encore de trajet calculé, rien à afficher en grand
-  document.getElementById('carte-modale').style.display = 'block';
-
-  // Initialise la carte une seule fois, puis la met à jour à chaque ouverture
+  // Initialise la carte une seule fois (le conteneur reste dans le DOM en permanence désormais)
   if (!carteLeafletInstance) {
-    carteLeafletInstance = L.map('carte-leaflet');
+    carteLeafletInstance = L.map('map-container', { zoomControl: true });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors',
       maxZoom: 19,
@@ -1752,52 +1614,52 @@ function ouvrirCartePleinEcran() {
   }
 
   // Nettoie les anciens marqueurs/tracés avant de redessiner
-  carteLeafletInstance.eachLayer(layer => {
-    if (layer instanceof L.Marker || layer instanceof L.Polyline) carteLeafletInstance.removeLayer(layer);
-  });
+  marqueursActuels.forEach(layer => carteLeafletInstance.removeLayer(layer));
+  marqueursActuels = [];
 
-  const { A, B, candidats, selection, routeDirecte } = etatActuel;
   const bounds = [];
-
-  // Icônes simples par statut (départ, arrivée, coché, non coché)
-  function icone(emoji, couleurFond) {
+  function icone(contenu, couleurFond, taille) {
+    taille = taille || 30;
     return L.divIcon({
-      html: `<div style="background:${couleurFond}; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; border:2px solid #14161a; box-shadow:0 2px 6px rgba(0,0,0,0.5);">${emoji}</div>`,
-      className: '', iconSize: [32, 32], iconAnchor: [16, 16],
+      html: `<div style="background:${couleurFond}; width:${taille}px; height:${taille}px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:${taille > 28 ? 15 : 13}px; font-weight:bold; color:#1a1408; border:2px solid #14161a; box-shadow:0 2px 6px rgba(0,0,0,0.5); font-family:Georgia,serif;">${contenu}</div>`,
+      className: '', iconSize: [taille, taille], iconAnchor: [taille/2, taille/2],
     });
   }
 
-  L.marker([A.lat, A.lon], { icon: icone('🚩', '#5d7a63') }).addTo(carteLeafletInstance).bindPopup(`<strong>Départ</strong><br>${A.nom}`);
-  L.marker([B.lat, B.lon], { icon: icone('🏁', '#5d7a63') }).addTo(carteLeafletInstance).bindPopup(`<strong>Arrivée</strong><br>${B.nom}`);
+  const mDepart = L.marker([A.lat, A.lon], { icon: icone('🚩', '#5d7a63', 32) }).addTo(carteLeafletInstance).bindPopup(`<strong>Départ</strong><br>${A.nom}`);
+  const mArrivee = L.marker([B.lat, B.lon], { icon: icone('🏁', '#5d7a63', 32) }).addTo(carteLeafletInstance).bindPopup(`<strong>Arrivée</strong><br>${B.nom}`);
+  marqueursActuels.push(mDepart, mArrivee);
   bounds.push([A.lat, A.lon], [B.lat, B.lon]);
 
-  (candidats || []).forEach((lieu, i) => {
-    const isChecked = selection && selection.has(lieu.id);
+  // Numérotation IDENTIQUE à celle utilisée dans la liste (afficherListeCandidats) :
+  // tri par position géographique le long du trajet, numéroté à partir de 1.
+  const candidatsOrdonnes = [...candidats].sort((a, b) => a.t - b.t);
+  candidatsOrdonnes.forEach((lieu, i) => {
+    const isChecked = selection.has(lieu.id);
     const marker = L.marker([lieu.lat, lieu.lon], {
-      icon: icone(isChecked ? '✓' : String(i + 1), isChecked ? '#c9a84c' : '#5a5d63'),
+      icon: icone(String(i + 1), isChecked ? '#c9a84c' : '#5a5d63', isChecked ? 30 : 26),
     }).addTo(carteLeafletInstance);
     const tarifTxt = lieu.tarif ? `<br><em>${lieu.tarif}</em>` : '';
-    marker.bindPopup(`<strong>${lieu.nom}</strong>${tarifTxt}`);
+    marker.bindPopup(`<strong>${i + 1}. ${lieu.nom}</strong>${tarifTxt}`);
+    marqueursActuels.push(marker);
     bounds.push([lieu.lat, lieu.lon]);
   });
 
   // Tracé du trajet réel si disponible, sinon ligne droite
-  if (routeDirecte && routeDirecte.coordonnees) {
-    const latlngs = routeDirecte.coordonnees.map(c => [c[1], c[0]]);
-    L.polyline(latlngs, { color: '#c9a84c', weight: 4, opacity: 0.85 }).addTo(carteLeafletInstance);
+  let trace;
+  if (coordsRoute) {
+    const latlngs = coordsRoute.map(c => [c[1], c[0]]);
+    trace = L.polyline(latlngs, { color: '#c9a84c', weight: 4, opacity: 0.85 }).addTo(carteLeafletInstance);
   } else {
-    L.polyline([[A.lat, A.lon], [B.lat, B.lon]], { color: '#c9a84c', weight: 3, opacity: 0.6, dashArray: '8 6' }).addTo(carteLeafletInstance);
+    trace = L.polyline([[A.lat, A.lon], [B.lat, B.lon]], { color: '#c9a84c', weight: 3, opacity: 0.6, dashArray: '8 6' }).addTo(carteLeafletInstance);
   }
+  marqueursActuels.push(trace);
 
-  // Léger délai pour que la carte calcule bien sa taille après affichage (display:none -> block)
+  // Léger délai pour que la carte calcule bien sa taille (utile au premier affichage)
   setTimeout(() => {
     carteLeafletInstance.invalidateSize();
-    carteLeafletInstance.fitBounds(bounds, { padding: [40, 40] });
+    carteLeafletInstance.fitBounds(bounds, { padding: [30, 30] });
   }, 50);
-}
-
-function fermerCartePleinEcran() {
-  document.getElementById('carte-modale').style.display = 'none';
 }
 
 // ============================================================
