@@ -398,6 +398,25 @@
     border-color: var(--gold);
     background: #1f1c14;
   }
+  .stop.candidate.stop-pause {
+    border-color: #d23c32;
+    border-width: 2px;
+  }
+  .stop.candidate.stop-pause.checked {
+    border-color: #d23c32;
+    background: #251616;
+  }
+  .pause-badge {
+    display: inline-block;
+    background: #d23c32;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: bold;
+    padding: 3px 10px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    letter-spacing: 0.3px;
+  }
   .checkbox-wrap {
     display: flex;
     align-items: flex-start;
@@ -1690,25 +1709,23 @@ async function genererParcours() {
     let messagePauses = '';
     const TOLERANCE_PAUSE_MIN_TXT = 20;
     const nbPausesConseillees = Math.floor(tempsTrajetEstime / 60);
+    const lieuxPausesRetenus = new Set(); // ids des lieux associés à une pause, pour les surligner dans la liste
     if (nbPausesConseillees >= 1) {
       const lignesPauses = [];
       for (let p = 1; p <= nbPausesConseillees; p++) {
         const fraction = (p * 60) / tempsTrajetEstime;
-        let lieuProche = null, meilleurEcart = Infinity;
-        for (const lieu of candidatsAvecDetour) {
-          if (lieu.t == null) continue;
-          const ecart = Math.abs(lieu.t - fraction) * tempsTrajetEstime;
-          if (ecart < meilleurEcart) { meilleurEcart = ecart; lieuProche = lieu; }
-        }
+        const resultat = trouverLieuPourPause(candidatsAvecDetour, fraction, tempsTrajetEstime, TOLERANCE_PAUSE_MIN_TXT);
         const horaire = formatTemps(p * 60);
-        if (lieuProche && meilleurEcart <= TOLERANCE_PAUSE_MIN_TXT) {
-          lignesPauses.push(`vers ${horaire} → <strong>${lieuProche.nom}</strong>`);
+        if (resultat) {
+          lignesPauses.push(`vers ${horaire} → <strong>${resultat.lieu.nom}</strong>`);
+          lieuxPausesRetenus.add(resultat.lieu.id);
         } else {
           lignesPauses.push(`vers ${horaire}`);
         }
       }
-      messagePauses = `<div class="pause-recap">☕ ${nbPausesConseillees} pause(s) conseillée(s) (toutes les heures de conduite), si possible près d'une découverte : ${lignesPauses.join(' · ')}.</div>`;
+      messagePauses = `<div class="pause-recap">☕ ${nbPausesConseillees} pause(s) conseillée(s) (toutes les heures de conduite), si possible près d'une découverte gratuite : ${lignesPauses.join(' · ')}.</div>`;
     }
+    etatActuel.lieuxPausesRetenus = lieuxPausesRetenus;
 
     // Comparatif des variantes de trajet (autoroute / hybride par segments / sans autoroute), avec coût estimé
     let messageComparatif = '';
@@ -1813,16 +1830,19 @@ function afficherListeCandidats() {
   // correspond exactement aux numéros affichés sur les marqueurs de la carte (même tri par .t).
   [...etatActuel.candidats].sort((a, b) => a.t - b.t).forEach((lieu, index) => {
     const isChecked = etatActuel.selection.has(lieu.id);
+    const estPause = etatActuel.lieuxPausesRetenus && etatActuel.lieuxPausesRetenus.has(lieu.id);
     const div = document.createElement('div');
-    div.className = 'stop candidate' + (isChecked ? ' checked' : '');
+    div.className = 'stop candidate' + (isChecked ? ' checked' : '') + (estPause ? ' stop-pause' : '');
     const detourClass = lieu.detourMin <= 15 ? 'low' : '';
     const tarif = lieu.tarif || 'à vérifier sur place';
     const tarifClass = tarif.startsWith('gratuit') ? 'gratuit' : tarif === 'payant' ? 'payant' : 'inconnu';
     const sourceTag = lieu.source === 'wikidata' ? ' · via Wikidata' : '';
+    const badgePause = estPause ? `<div class="pause-badge">☕ Pause conseillée ici</div>` : '';
     const imageHtml = lieu.image
       ? `<img src="${lieu.image}" alt="${lieu.nom}" class="lieu-image" loading="lazy" onerror="this.parentElement.style.display='none';">`
       : `<div class="lieu-image lieu-image-placeholder">🏞️</div>`;
     div.innerHTML = `
+      ${badgePause}
       <div class="checkbox-wrap" onclick="toggleCandidat('${lieu.id}')">
         <div class="map-number-badge">${index + 1}</div>
         ${imageHtml}
@@ -1910,6 +1930,31 @@ function formatTemps(min) {
   return m === 0 ? h + ' h' : h + ' h ' + m;
 }
 
+// Cherche, parmi les candidats du trajet, le meilleur lieu pour associer une pause à l'heure
+// "fraction" donnée (0=départ, 1=arrivée). Priorise les lieux GRATUITS s'il y en a un dans la
+// fenêtre de tolérance — l'idée étant qu'une pause ne doit pas obliger à payer une entrée.
+// Retourne { lieu, ecartMin } ou null si rien dans la tolérance.
+function trouverLieuPourPause(candidats, fraction, dureeTotaleMin, toleranceMin) {
+  const estGratuitLieu = (l) => (l.tarif || '').startsWith('gratuit');
+  let meilleurGratuit = null, ecartGratuit = Infinity;
+  let meilleurAutre = null, ecartAutre = Infinity;
+  for (const lieu of candidats) {
+    if (lieu.t == null) continue;
+    const ecart = Math.abs(lieu.t - fraction) * dureeTotaleMin;
+    if (ecart > toleranceMin) continue;
+    if (estGratuitLieu(lieu)) {
+      if (ecart < ecartGratuit) { ecartGratuit = ecart; meilleurGratuit = lieu; }
+    } else {
+      if (ecart < ecartAutre) { ecartAutre = ecart; meilleurAutre = lieu; }
+    }
+  }
+  // Un lieu gratuit est préféré même s'il est un peu moins proche temporellement qu'un lieu
+  // payant, dans la limite où il reste raisonnablement dans la fenêtre de tolérance.
+  if (meilleurGratuit) return { lieu: meilleurGratuit, ecartMin: ecartGratuit };
+  if (meilleurAutre) return { lieu: meilleurAutre, ecartMin: ecartAutre };
+  return null;
+}
+
 // ============================================================
 // CARTE INTERACTIVE INTÉGRÉE (Leaflet / OpenStreetMap)
 // Affichée directement dans la page (pas en plein écran), avec un vrai fond de carte
@@ -1990,23 +2035,14 @@ function dessinerCarte(A, B, candidats, selection, coordsRoute, dureeTotaleMin) 
       const heuresEcoulees = (p * TRANCHE_PAUSE_MIN) / 60;
       const labelHeure = heuresEcoulees === Math.floor(heuresEcoulees) ? `${heuresEcoulees} h` : `${Math.floor(heuresEcoulees)} h ${TRANCHE_PAUSE_MIN/2}`;
 
-      // Cherche, parmi les candidats déjà trouvés sur le trajet, celui dont la position (en
-      // fraction du temps total) tombe le plus proche de cette pause théorique.
-      let lieuPause = null, meilleurEcartMin = Infinity;
-      for (const lieu of candidatsOrdonnes) {
-        if (lieu.t == null) continue;
-        const ecartFractionMin = Math.abs(lieu.t - fraction) * dureeMin;
-        if (ecartFractionMin < meilleurEcartMin) {
-          meilleurEcartMin = ecartFractionMin;
-          lieuPause = lieu;
-        }
-      }
-      const aUneDecouverte = lieuPause && meilleurEcartMin <= TOLERANCE_PAUSE_MIN;
+      // Cherche, parmi les candidats déjà trouvés sur le trajet, le meilleur lieu (priorité au
+      // gratuit) dont la position tombe proche de cette pause théorique.
+      const resultatPause = trouverLieuPourPause(candidatsOrdonnes, fraction, dureeMin, TOLERANCE_PAUSE_MIN);
 
       let latPause = lat, lonPause = lon, popupPause;
-      if (aUneDecouverte) {
-        latPause = lieuPause.lat; lonPause = lieuPause.lon;
-        popupPause = `<strong>☕ Pause conseillée</strong><br>après environ ${labelHeure} de route<br>→ idéal pour visiter <strong>${lieuPause.nom}</strong> juste à côté`;
+      if (resultatPause) {
+        latPause = resultatPause.lieu.lat; lonPause = resultatPause.lieu.lon;
+        popupPause = `<strong>☕ Pause conseillée</strong><br>après environ ${labelHeure} de route<br>→ idéal pour visiter <strong>${resultatPause.lieu.nom}</strong> juste à côté`;
       } else {
         popupPause = `<strong>☕ Pause conseillée</strong><br>après environ ${labelHeure} de route`;
       }
