@@ -1019,18 +1019,46 @@ async function obtenirRouteMix(A, B, routeDirecte) {
   }
 }
 
-// Estimation grossière du coût d'un trajet : péage proportionnel au km évité par
-// rapport au trajet sans autoroute (~0,10€/km), + carburant sur la distance totale
-// (~6,5 L/100km, ~1,85€/L — hypothèses moyennes, à ajuster selon le véhicule réel).
-const TARIF_PEAGE_KM = 0.10;
+// Estimation du coût d'un trajet : péage proportionnel au km évité par rapport au trajet
+// sans autoroute, + carburant sur la distance totale (~6,5 L/100km, ~1,85€/L — hypothèses
+// moyennes, à ajuster selon le véhicule réel).
+//
+// Le tarif au km varie réellement selon le réseau autoroutier emprunté (sources : sites
+// officiels VINCI/APRR/ASFA, 2026) : environ 0,06€/km sur le réseau APRR/AREA en Bourgogne,
+// jusqu'à 0,115€/km sur le réseau Sud/Méditerranée (A7). Plutôt qu'un taux unique national,
+// on associe un taux approximatif à de grandes zones géographiques de référence — ce reste
+// une estimation par zone, pas un calcul tronçon par tronçon comme le permettraient les
+// simulateurs officiels (que cette appli n'a pas accès à interroger automatiquement).
+const TARIFS_PEAGE_PAR_ZONE = [
+  { nom: 'A7 / Sud-Méditerranée (Lyon-Marseille)', latC: 44.5, lonC: 4.8, rayonKm: 180, tarifKm: 0.115 },
+  { nom: 'A6/A43 / Alpes (Paris-Chambéry, ATMB)', latC: 45.5, lonC: 5.5, rayonKm: 150, tarifKm: 0.110 },
+  { nom: 'A10 / Aquitaine (Paris-Bordeaux, Cofiroute)', latC: 46.5, lonC: 0.5, rayonKm: 250, tarifKm: 0.105 },
+  { nom: 'A6 / Paris-Lyon (Sapn/APRR)', latC: 46.8, lonC: 4.0, rayonKm: 200, tarifKm: 0.085 },
+  { nom: 'APRR/AREA Bourgogne (A5, A31, A36, A39)', latC: 47.3, lonC: 4.8, rayonKm: 150, tarifKm: 0.065 },
+];
+const TARIF_PEAGE_KM_DEFAUT = 0.09; // valeur moyenne nationale si aucune zone connue ne correspond
+
+// Détermine le tarif au km le plus pertinent en testant si le milieu du trajet (ou les deux
+// extrémités) tombe dans une zone de référence connue ; sinon utilise la moyenne nationale.
+function tarifPeagePourTrajet(A, B) {
+  const latMid = (A.lat + B.lat) / 2, lonMid = (A.lon + B.lon) / 2;
+  for (const zone of TARIFS_PEAGE_PAR_ZONE) {
+    if (distanceKm(latMid, lonMid, zone.latC, zone.lonC) <= zone.rayonKm) {
+      return { tarifKm: zone.tarifKm, zoneNom: zone.nom };
+    }
+  }
+  return { tarifKm: TARIF_PEAGE_KM_DEFAUT, zoneNom: null };
+}
+
 const CONSO_L_100KM = 6.5;
 const PRIX_CARBURANT_L = 1.85;
 
-function estimerCoutTrajet(distanceKm, distanceKmSansAutoroute) {
+function estimerCoutTrajet(distanceKm, distanceKmSansAutoroute, tarifPeageKm) {
+  const tarif = tarifPeageKm != null ? tarifPeageKm : TARIF_PEAGE_KM_DEFAUT;
   const kmAutoroute = distanceKmSansAutoroute != null
     ? Math.max(0, distanceKmSansAutoroute - distanceKm) // approximation : portion "gagnée" en évitant l'autoroute
     : 0;
-  const peage = kmAutoroute * TARIF_PEAGE_KM;
+  const peage = kmAutoroute * tarif;
   const carburant = (distanceKm / 100) * CONSO_L_100KM * PRIX_CARBURANT_L;
   return { peage, carburant, total: peage + carburant };
 }
@@ -1104,7 +1132,8 @@ async function calculerTrajetHybride(A, B, routeDirecte, candidatsDisponibles) {
     if (!segAutoroute) return null;
 
     const lieuProche = meilleurLieuProcheSegment(P1, P2, candidatsDisponibles);
-    const coutAutoroute = estimerCoutTrajet(segAutoroute.distanceKm, segSansAutoroute ? segSansAutoroute.distanceKm : null);
+    const { tarifKm: tarifKmSegment } = tarifPeagePourTrajet(P1, P2);
+    const coutAutoroute = estimerCoutTrajet(segAutoroute.distanceKm, segSansAutoroute ? segSansAutoroute.distanceKm : null, tarifKmSegment);
 
     // Décision pour ce segment : on bascule en "sans autoroute" seulement si TOUTES ces
     // conditions sont réunies — sinon l'autoroute reste le choix par défaut sur ce segment.
@@ -1730,35 +1759,39 @@ async function genererParcours() {
     // Comparatif des variantes de trajet (autoroute / hybride par segments / sans autoroute), avec coût estimé
     let messageComparatif = '';
     if (routeReelle) {
-      const coutAvecAutoroute = estimerCoutTrajet(routeReelle.distanceKm, routeSansAutoroute ? routeSansAutoroute.distanceKm : null);
+      const { tarifKm: tarifKmTrajet, zoneNom: zoneTarifNom } = tarifPeagePourTrajet(A, B);
+      const coutAvecAutoroute = estimerCoutTrajet(routeReelle.distanceKm, routeSansAutoroute ? routeSansAutoroute.distanceKm : null, tarifKmTrajet);
       const lignesComparatif = [];
       lignesComparatif.push({
         label: '🛣️ Avec autoroute', distanceKm: routeReelle.distanceKm, dureeMin: routeReelle.dureeMin,
         cout: coutAvecAutoroute,
       });
       if (routeHybride && Math.abs(routeHybride.distanceKm - routeReelle.distanceKm) > 1) {
-        const coutHybride = estimerCoutTrajet(routeHybride.distanceKm, routeSansAutoroute ? routeSansAutoroute.distanceKm : null);
+        const coutHybride = estimerCoutTrajet(routeHybride.distanceKm, routeSansAutoroute ? routeSansAutoroute.distanceKm : null, tarifKmTrajet);
         const nbLieux = routeHybride.lieuxIntegresIds ? routeHybride.lieuxIntegresIds.size : 0;
         const detailHybride = nbLieux > 0
           ? ` · passe près de ${nbLieux} lieu(x) patrimonial(aux) sur les sections départementales`
           : ` · ${routeHybride.nbSegmentsSansAutoroute} section(s) en départementale`;
         lignesComparatif.push({ label: '🔀 Hybride (par segments)', distanceKm: routeHybride.distanceKm, dureeMin: routeHybride.dureeMin, cout: coutHybride, detail: detailHybride });
       } else if (routeMix && Math.abs(routeMix.distanceKm - routeReelle.distanceKm) > 1) {
-        const coutMix = estimerCoutTrajet(routeMix.distanceKm, routeSansAutoroute ? routeSansAutoroute.distanceKm : null);
+        const coutMix = estimerCoutTrajet(routeMix.distanceKm, routeSansAutoroute ? routeSansAutoroute.distanceKm : null, tarifKmTrajet);
         lignesComparatif.push({ label: '🔀 Mix (approx.)', distanceKm: routeMix.distanceKm, dureeMin: routeMix.dureeMin, cout: coutMix });
       }
       if (routeSansAutoroute) {
-        const coutSansAutoroute = estimerCoutTrajet(routeSansAutoroute.distanceKm, routeSansAutoroute.distanceKm);
+        const coutSansAutoroute = estimerCoutTrajet(routeSansAutoroute.distanceKm, routeSansAutoroute.distanceKm, tarifKmTrajet);
         lignesComparatif.push({ label: '🌾 Sans autoroute', distanceKm: routeSansAutoroute.distanceKm, dureeMin: routeSansAutoroute.dureeMin, cout: coutSansAutoroute });
       }
       if (lignesComparatif.length > 1) {
         const lignesHtml = lignesComparatif.map(l =>
           `<div class="comparatif-ligne"><strong>${l.label}</strong> · ${Math.round(l.distanceKm)} km · ${formatTemps(Math.round(l.dureeMin))} · ≈ ${l.cout.total.toFixed(0)} € (péage + carburant)${l.detail || ''}</div>`
         ).join('');
+        const noteZone = zoneTarifNom
+          ? `péage estimé à ${tarifKmTrajet}€/km évité (zone détectée : ${zoneTarifNom})`
+          : `péage estimé à ${tarifKmTrajet}€/km évité (moyenne nationale, zone non reconnue)`;
         messageComparatif = `<div class="comparatif-trajets">
           <div class="comparatif-titre">Comparatif des trajets possibles (estimation)</div>
           ${lignesHtml}
-          <div class="comparatif-note">Estimation approximative — péage à ${TARIF_PEAGE_KM}€/km évité, carburant à ${CONSO_L_100KM}L/100km. L'option hybride teste plusieurs sections autoroute/départementale et garde le meilleur compromis par segment — approche artisanale, pas un algorithme d'optimisation garanti.</div>
+          <div class="comparatif-note">Estimation approximative — ${noteZone}, carburant à ${CONSO_L_100KM}L/100km. L'option hybride teste plusieurs sections autoroute/départementale et garde le meilleur compromis par segment — approche artisanale, pas un algorithme d'optimisation garanti.</div>
         </div>`;
       }
     }
