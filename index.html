@@ -217,6 +217,46 @@
     text-align: left;
   }
   .terroir-tip strong { color: var(--gold); }
+  .pause-recap {
+    display: block;
+    font-size: 0.8rem;
+    color: #e09a8c;
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: #2a1c1c;
+    border: 1px solid #4a2d2d;
+    border-radius: 8px;
+    line-height: 1.5;
+    text-align: left;
+  }
+  .comparatif-trajets {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #16181d;
+    border: 1px solid #2a2d33;
+    border-radius: 8px;
+    text-align: left;
+  }
+  .comparatif-titre {
+    font-size: 0.78rem;
+    color: var(--gold);
+    font-weight: bold;
+    margin-bottom: 6px;
+  }
+  .comparatif-ligne {
+    font-size: 0.78rem;
+    color: #d8d2c4;
+    padding: 4px 0;
+    border-bottom: 1px solid #22252a;
+  }
+  .comparatif-ligne:last-of-type { border-bottom: none; }
+  .comparatif-ligne strong { color: var(--text); }
+  .comparatif-note {
+    font-size: 0.68rem;
+    color: var(--muted);
+    margin-top: 6px;
+    line-height: 1.4;
+  }
 
   /* --- Indicateur de chargement (boussole qui tourne + escargot qui se balade) --- */
   .loading-zone {
@@ -708,6 +748,23 @@ const ARTISANS_FRANCE = [
   //   resume:"Présentation courte du savoir-faire, idéalement avec le titre MOF s'il y en a un." },
 ];
 
+// ============================================================
+// LIEUX REPÉRÉS MANUELLEMENT — trouvés par recherche ciblée sur des trajets précis
+// (pas par Wikidata), quand un utilisateur signale des points d'intérêt vus sur Google Maps
+// ou sur le terrain. À enrichir trajet par trajet, au fil des demandes.
+// ============================================================
+const LIEUX_REPERES_MANUELLEMENT = [
+  { id:"jeurre-chateau", nom:"Château et parc de Jeurre", lat:48.46839, lon:2.18775, region:"Essonne",
+    score:4, duree:30, tarif:"payant",
+    resume:"Édifice de la fin du XVIIIe siècle à Morigny-Champigny, le parc de Jeurre rassemble des fabriques décoratives sauvées du château de Méréville : temple de l'Amour, colonne rostrale, cénotaphe de Cook." },
+  { id:"chamarande-domaine", nom:"Domaine de Chamarande", lat:48.5145, lon:2.2465, region:"Essonne",
+    score:4, duree:40, tarif:"gratuit",
+    resume:"Le plus vaste jardin public de l'Essonne (98 hectares), labellisé « jardin remarquable », réunit un château du XVIIe siècle, un centre d'art contemporain et un parc en accès libre toute l'année." },
+  { id:"montlhery-tour", nom:"Tour (donjon) de Montlhéry", lat:48.6395, lon:2.2705, region:"Essonne",
+    score:4, duree:25, tarif:"payant (3€, gratuit -6 ans)",
+    resume:"Donjon médiéval du XIIe siècle haut de 30 mètres, dominant la route de Paris à Orléans. Du sommet, accessible par 138 marches, la vue s'étend à 360° sur l'Essonne." },
+];
+
 // Classification automatique gratuit/payant pour la base manuelle, par mots-clés dans le nom
 // (information non garantie à 100% — affichée comme indication, pas comme certitude)
 function classifierTarif(nom) {
@@ -732,7 +789,7 @@ function setupAutocomplete(inputId, listId, onSelect) {
   input.addEventListener('input', () => {
     const q = input.value.trim().toLowerCase();
     if (q.length < 1) { list.classList.remove('show'); return; }
-    const matches = [...LIEUX_FRANCE, ...ARTISANS_FRANCE].filter(l => l.nom.toLowerCase().includes(q)).slice(0, 8);
+    const matches = [...LIEUX_FRANCE, ...ARTISANS_FRANCE, ...LIEUX_REPERES_MANUELLEMENT].filter(l => l.nom.toLowerCase().includes(q)).slice(0, 8);
     if (matches.length === 0) { list.classList.remove('show'); list.innerHTML = ''; return; }
     list.innerHTML = matches.map(l =>
       `<div class="autocomplete-item" data-id="${l.id}">${l.nom}<span class="region-tag">${l.region}</span></div>`
@@ -891,6 +948,184 @@ async function obtenirRouteReelle(A, B) {
     distanceKm: route.distance / 1000,
     dureeMin: route.duration / 60,
     coordonnees: route.geometry.coordinates, // [ [lon, lat], ... ]
+  };
+}
+
+// Variante sans autoroute (exclude=motorway). Si le serveur ne peut pas calculer
+// (ex: aucun trajet possible sans autoroute), retourne null plutôt que de planter.
+async function obtenirRouteSansAutoroute(A, B) {
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${A.lon},${A.lat};${B.lon},${B.lat}?overview=full&geometries=geojson&exclude=motorway`;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) return null;
+    const route = data.routes[0];
+    return {
+      distanceKm: route.distance / 1000,
+      dureeMin: route.duration / 60,
+      coordonnees: route.geometry.coordinates,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// Variante "mix" approchée : repasse par un point intermédiaire situé à mi-chemin
+// du trajet direct mais légèrement décalé vers une route secondaire proche, ce qui
+// pousse souvent OSRM à utiliser un peu moins d'autoroute sans l'exclure complètement.
+// C'est une approximation, pas un véritable optimiseur coût/temps.
+async function obtenirRouteMix(A, B, routeDirecte) {
+  if (!routeDirecte || !routeDirecte.coordonnees || routeDirecte.coordonnees.length < 3) return null;
+  try {
+    const coords = routeDirecte.coordonnees;
+    const idxMilieu = Math.floor(coords.length / 2);
+    const [lonMid, latMid] = coords[idxMilieu];
+    // Décale légèrement le point milieu (≈10km) pour inciter à un itinéraire différent
+    const decalage = 0.09;
+    const lonAlt = lonMid + decalage, latAlt = latMid;
+    const url = `https://router.project-osrm.org/route/v1/driving/${A.lon},${A.lat};${lonAlt},${latAlt};${B.lon},${B.lat}?overview=full&geometries=geojson`;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) return null;
+    const route = data.routes[0];
+    return {
+      distanceKm: route.distance / 1000,
+      dureeMin: route.duration / 60,
+      coordonnees: route.geometry.coordinates,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// Estimation grossière du coût d'un trajet : péage proportionnel au km évité par
+// rapport au trajet sans autoroute (~0,10€/km), + carburant sur la distance totale
+// (~6,5 L/100km, ~1,85€/L — hypothèses moyennes, à ajuster selon le véhicule réel).
+const TARIF_PEAGE_KM = 0.10;
+const CONSO_L_100KM = 6.5;
+const PRIX_CARBURANT_L = 1.85;
+
+function estimerCoutTrajet(distanceKm, distanceKmSansAutoroute) {
+  const kmAutoroute = distanceKmSansAutoroute != null
+    ? Math.max(0, distanceKmSansAutoroute - distanceKm) // approximation : portion "gagnée" en évitant l'autoroute
+    : 0;
+  const peage = kmAutoroute * TARIF_PEAGE_KM;
+  const carburant = (distanceKm / 100) * CONSO_L_100KM * PRIX_CARBURANT_L;
+  return { peage, carburant, total: peage + carburant };
+}
+
+// ============================================================
+// TRAJET HYBRIDE — approche artisanale, pas un vrai algorithme d'optimisation.
+// Découpe le trajet direct en segments réguliers (par position le long de la route),
+// calcule pour chaque segment la variante "autoroute" et la variante "sans autoroute",
+// puis retient celle qui offre le meilleur compromis temps perdu / argent économisé /
+// présence d'un lieu patrimonial à proximité.
+// ============================================================
+
+// Découpe les coordonnées d'un trajet en N points répartis le long de la route
+// (utilisés comme bornes de segments), en gardant systématiquement le départ et l'arrivée.
+function decouperEnBornes(coordsRoute, nbSegments) {
+  if (!coordsRoute || coordsRoute.length < 2) return [];
+  const bornes = [];
+  for (let i = 0; i <= nbSegments; i++) {
+    const idx = Math.round((i / nbSegments) * (coordsRoute.length - 1));
+    const [lon, lat] = coordsRoute[idx];
+    bornes.push({ lat, lon });
+  }
+  return bornes;
+}
+
+// Pour un segment [P1, P2], cherche le meilleur lieu patrimonial déjà identifié comme
+// candidat (passé en paramètre) qui soit proche du segment ET accessible sans trop dévier.
+function meilleurLieuProcheSegment(P1, P2, candidatsDisponibles) {
+  if (!candidatsDisponibles || candidatsDisponibles.length === 0) return null;
+  let meilleur = null, meilleureDist = Infinity;
+  for (const lieu of candidatsDisponibles) {
+    const proj = projectionSurSegment(lieu.lat, lieu.lon, P1.lat, P1.lon, P2.lat, P2.lon);
+    if (proj.t < -0.2 || proj.t > 1.2) continue; // hors de la zone raisonnable du segment
+    if (proj.distPerp < meilleureDist) {
+      meilleureDist = proj.distPerp;
+      meilleur = lieu;
+    }
+  }
+  // Au-delà de 25km du segment, le détour n'est plus raisonnable pour ce calcul
+  return (meilleur && meilleureDist <= 25) ? meilleur : null;
+}
+
+// Calcule le trajet hybride complet. candidatsDisponibles = lieux patrimoniaux déjà
+// trouvés sur la zone (pour repérer ceux proches de chaque segment, sans nouvel appel Wikidata).
+async function calculerTrajetHybride(A, B, routeDirecte, candidatsDisponibles) {
+  if (!routeDirecte || !routeDirecte.coordonnees) return null;
+
+  const distanceTotaleDirecte = routeDirecte.distanceKm;
+  // Nombre de segments : environ un tous les 80km, borné entre 2 et 5 pour rester raisonnable
+  // en nombre d'appels OSRM (chaque segment = jusqu'à 2 appels).
+  const nbSegments = Math.max(2, Math.min(5, Math.round(distanceTotaleDirecte / 80)));
+  const bornes = decouperEnBornes(routeDirecte.coordonnees, nbSegments);
+  if (bornes.length < 3) return null;
+
+  const segmentsRetenus = [];
+  let distanceHybride = 0, dureeHybride = 0;
+  let lieuxIntegresIds = new Set();
+
+  for (let i = 0; i < bornes.length - 1; i++) {
+    const P1 = bornes[i], P2 = bornes[i + 1];
+    let segAutoroute = null, segSansAutoroute = null;
+    try {
+      [segAutoroute, segSansAutoroute] = await Promise.all([
+        obtenirRouteReelle(P1, P2),
+        obtenirRouteSansAutoroute(P1, P2),
+      ]);
+    } catch (e) {
+      // Si un segment échoue, on ignore le calcul hybride plutôt que de planter tout le trajet
+      return null;
+    }
+    if (!segAutoroute) return null;
+
+    const lieuProche = meilleurLieuProcheSegment(P1, P2, candidatsDisponibles);
+    const coutAutoroute = estimerCoutTrajet(segAutoroute.distanceKm, segSansAutoroute ? segSansAutoroute.distanceKm : null);
+
+    // Décision pour ce segment : on bascule en "sans autoroute" seulement si TOUTES ces
+    // conditions sont réunies — sinon l'autoroute reste le choix par défaut sur ce segment.
+    let choisirSansAutoroute = false;
+    if (segSansAutoroute) {
+      const tempsPerduMin = segSansAutoroute.dureeMin - segAutoroute.dureeMin;
+      const argentEconomise = coutAutoroute.peage; // péage évité sur ce segment
+      // Règle simple : on accepte de perdre du temps sur ce segment si chaque minute perdue
+      // "vaut" moins de 0,15€ d'économie (seuil arbitraire raisonnable), OU s'il y a un vrai
+      // lieu patrimonial à découvrir qui justifie le détour à lui seul.
+      const ratioAcceptable = tempsPerduMin > 0 ? (argentEconomise / tempsPerduMin) >= 0.15 : true;
+      if (ratioAcceptable || (lieuProche && tempsPerduMin <= 35)) {
+        choisirSansAutoroute = true;
+      }
+    }
+
+    const segmentChoisi = choisirSansAutoroute ? segSansAutoroute : segAutoroute;
+    segmentsRetenus.push({
+      P1, P2,
+      viaAutoroute: !choisirSansAutoroute,
+      distanceKm: segmentChoisi.distanceKm,
+      dureeMin: segmentChoisi.dureeMin,
+      coordonnees: segmentChoisi.coordonnees,
+      lieuProche: choisirSansAutoroute ? lieuProche : null,
+    });
+    distanceHybride += segmentChoisi.distanceKm;
+    dureeHybride += segmentChoisi.dureeMin;
+    if (choisirSansAutoroute && lieuProche) lieuxIntegresIds.add(lieuProche.id);
+  }
+
+  // Assemble la géométrie complète en concaténant les segments retenus
+  const coordonneesCompletes = segmentsRetenus.flatMap((s, i) => i === 0 ? s.coordonnees : s.coordonnees.slice(1));
+
+  return {
+    distanceKm: distanceHybride,
+    dureeMin: dureeHybride,
+    coordonnees: coordonneesCompletes,
+    segments: segmentsRetenus,
+    lieuxIntegresIds,
+    nbSegmentsSansAutoroute: segmentsRetenus.filter(s => !s.viaAutoroute).length,
   };
 }
 
@@ -1198,6 +1433,16 @@ async function genererParcours() {
       console.warn('OSRM indisponible, repli sur vol d\'oiseau :', e.message);
     }
 
+    // Variantes "sans autoroute" et "mix" — calculées en parallèle pour limiter le temps d'attente.
+    // Optionnelles : si l'une échoue, on l'omet simplement du comparatif plutôt que de bloquer.
+    let routeSansAutoroute = null, routeMix = null;
+    if (routeReelle) {
+      [routeSansAutoroute, routeMix] = await Promise.all([
+        obtenirRouteSansAutoroute(A, B),
+        obtenirRouteMix(A, B, routeReelle),
+      ]);
+    }
+
     const distanceTotale = routeReelle ? routeReelle.distanceKm : distanceKm(A.lat, A.lon, B.lat, B.lon);
     const tempsTrajetEstime = routeReelle ? routeReelle.dureeMin : (distanceTotale / 80) * 60;
 
@@ -1269,7 +1514,7 @@ async function genererParcours() {
       console.warn('Wikidata indisponible :', e.message);
     }
 
-    const baseManuelleComplete = [...LIEUX_FRANCE, ...ARTISANS_FRANCE];
+    const baseManuelleComplete = [...LIEUX_FRANCE, ...ARTISANS_FRANCE, ...LIEUX_REPERES_MANUELLEMENT];
     const lieuxWikidataDedupliques = dedupliquerLieux(baseManuelleComplete, lieuxWikidata);
     const basePlaceCombinee = [...baseManuelleComplete, ...lieuxWikidataDedupliques];
 
@@ -1411,6 +1656,17 @@ async function genererParcours() {
 
     etatActuel = { A, B, routeDirecte: routeReelle, candidats: candidatsAvecDetour, selection: new Set(), tempsTrajetEstime, distanceTotale };
 
+    // Trajet hybride : calculé maintenant que les lieux patrimoniaux du trajet sont connus,
+    // pour pouvoir repérer ceux proches de chaque segment candidat à un détour départementale.
+    let routeHybride = null;
+    if (routeReelle) {
+      try {
+        routeHybride = await calculerTrajetHybride(A, B, routeReelle, candidatsAvecDetour);
+      } catch (e) {
+        console.warn('Calcul du trajet hybride indisponible :', e.message);
+      }
+    }
+
     // --- Affichage résumé ---
     const modeLabel = { tortue:"🐢 Tortue", marche:"🚶 Marche", lievre:"🐇 Lièvre" }[modeActuel];
     const routeTag = routeReelle ? '· route réelle' : '· estimation à vol d\'oiseau';
@@ -1429,9 +1685,58 @@ async function genererParcours() {
     const suggestionVente = SUGGESTIONS_VENTE_DIRECTE[Math.floor(Math.random() * SUGGESTIONS_VENTE_DIRECTE.length)];
     const messageVenteDirecte = `<div class="terroir-tip">🚜 Sur votre trajet, gardez l'œil ouvert pour <strong>${suggestionVente}</strong> — souvent en libre-service, pas toujours signalé sur les cartes.</div>`;
 
+    // Récapitulatif des pauses conseillées (toutes les heures de conduite)
+    let messagePauses = '';
+    const nbPausesConseillees = Math.floor(tempsTrajetEstime / 60);
+    if (nbPausesConseillees >= 1) {
+      const horaires = [];
+      for (let p = 1; p <= nbPausesConseillees; p++) {
+        horaires.push(formatTemps(p * 60));
+      }
+      messagePauses = `<div class="pause-recap">☕ ${nbPausesConseillees} pause(s) conseillée(s) (toutes les heures de conduite) — repérées sur la carte, vers ${horaires.join(', ')} de route.</div>`;
+    }
+
+    // Comparatif des variantes de trajet (autoroute / hybride par segments / sans autoroute), avec coût estimé
+    let messageComparatif = '';
+    if (routeReelle) {
+      const coutAvecAutoroute = estimerCoutTrajet(routeReelle.distanceKm, routeSansAutoroute ? routeSansAutoroute.distanceKm : null);
+      const lignesComparatif = [];
+      lignesComparatif.push({
+        label: '🛣️ Avec autoroute', distanceKm: routeReelle.distanceKm, dureeMin: routeReelle.dureeMin,
+        cout: coutAvecAutoroute,
+      });
+      if (routeHybride && Math.abs(routeHybride.distanceKm - routeReelle.distanceKm) > 1) {
+        const coutHybride = estimerCoutTrajet(routeHybride.distanceKm, routeSansAutoroute ? routeSansAutoroute.distanceKm : null);
+        const nbLieux = routeHybride.lieuxIntegresIds ? routeHybride.lieuxIntegresIds.size : 0;
+        const detailHybride = nbLieux > 0
+          ? ` · passe près de ${nbLieux} lieu(x) patrimonial(aux) sur les sections départementales`
+          : ` · ${routeHybride.nbSegmentsSansAutoroute} section(s) en départementale`;
+        lignesComparatif.push({ label: '🔀 Hybride (par segments)', distanceKm: routeHybride.distanceKm, dureeMin: routeHybride.dureeMin, cout: coutHybride, detail: detailHybride });
+      } else if (routeMix && Math.abs(routeMix.distanceKm - routeReelle.distanceKm) > 1) {
+        const coutMix = estimerCoutTrajet(routeMix.distanceKm, routeSansAutoroute ? routeSansAutoroute.distanceKm : null);
+        lignesComparatif.push({ label: '🔀 Mix (approx.)', distanceKm: routeMix.distanceKm, dureeMin: routeMix.dureeMin, cout: coutMix });
+      }
+      if (routeSansAutoroute) {
+        const coutSansAutoroute = estimerCoutTrajet(routeSansAutoroute.distanceKm, routeSansAutoroute.distanceKm);
+        lignesComparatif.push({ label: '🌾 Sans autoroute', distanceKm: routeSansAutoroute.distanceKm, dureeMin: routeSansAutoroute.dureeMin, cout: coutSansAutoroute });
+      }
+      if (lignesComparatif.length > 1) {
+        const lignesHtml = lignesComparatif.map(l =>
+          `<div class="comparatif-ligne"><strong>${l.label}</strong> · ${Math.round(l.distanceKm)} km · ${formatTemps(Math.round(l.dureeMin))} · ≈ ${l.cout.total.toFixed(0)} € (péage + carburant)${l.detail || ''}</div>`
+        ).join('');
+        messageComparatif = `<div class="comparatif-trajets">
+          <div class="comparatif-titre">Comparatif des trajets possibles (estimation)</div>
+          ${lignesHtml}
+          <div class="comparatif-note">Estimation approximative — péage à ${TARIF_PEAGE_KM}€/km évité, carburant à ${CONSO_L_100KM}L/100km. L'option hybride teste plusieurs sections autoroute/départementale et garde le meilleur compromis par segment — approche artisanale, pas un algorithme d'optimisation garanti.</div>
+        </div>`;
+      }
+    }
+
     summary.innerHTML = `${candidatsAvecDetour.length} étape(s) patrimoniale(s) trouvée(s) en mode ${modeLabel}, à vous de choisir !
       <span class="sub">${A.nom} → ${B.nom} · trajet direct ${Math.round(distanceTotale)} km · ${formatTemps(Math.round(tempsTrajetEstime))} ${routeTag}</span>`
       + (avertissementRoute ? `<span class="sub" style="color:#c98c4c;">⚠ ${avertissementRoute}</span>` : '')
+      + messageComparatif
+      + messagePauses
       + messageTerroir
       + messageVenteDirecte;
 
@@ -1654,6 +1959,23 @@ function dessinerCarte(A, B, candidats, selection, coordsRoute, dureeTotaleMin) 
     trace = L.polyline([[A.lat, A.lon], [B.lat, B.lon]], { color: '#c9a84c', weight: 3, opacity: 0.6, dashArray: '8 6' }).addTo(carteLeafletInstance);
   }
   marqueursActuels.push(trace);
+
+  // --- Marqueurs "Pause conseillée" toutes les heures de conduite ---
+  const TRANCHE_PAUSE_MIN = 60;
+  const dureeMin = dureeTotaleMin || 0;
+  if (dureeMin > TRANCHE_PAUSE_MIN && coordsRoute && coordsRoute.length > 1) {
+    const nbPauses = Math.floor(dureeMin / TRANCHE_PAUSE_MIN);
+    for (let p = 1; p <= nbPauses; p++) {
+      const fraction = (p * TRANCHE_PAUSE_MIN) / dureeMin;
+      const idx = Math.min(coordsRoute.length - 1, Math.round(fraction * (coordsRoute.length - 1)));
+      const [lon, lat] = coordsRoute[idx];
+      const heuresEcoulees = (p * TRANCHE_PAUSE_MIN) / 60;
+      const labelHeure = heuresEcoulees === Math.floor(heuresEcoulees) ? `${heuresEcoulees} h` : `${Math.floor(heuresEcoulees)} h ${TRANCHE_PAUSE_MIN/2}`;
+      const mPause = L.marker([lat, lon], { icon: icone('☕', '#d23c32', 26) }).addTo(carteLeafletInstance)
+        .bindPopup(`<strong>☕ Pause conseillée</strong><br>après environ ${labelHeure} de route`);
+      marqueursActuels.push(mPause);
+    }
+  }
 
   // Léger délai pour que la carte calcule bien sa taille (utile au premier affichage)
   setTimeout(() => {
